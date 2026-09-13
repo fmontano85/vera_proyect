@@ -2,28 +2,17 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Route;
-use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
-use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
-
 /*
 |--------------------------------------------------------------------------
 | Tenant Routes
 |--------------------------------------------------------------------------
 |
-| Here you can register the tenant routes for your application.
-| These routes are loaded by the TenantRouteServiceProvider.
-|
-| Feel free to customize them however you want. Good luck!
+| Vacio a proposito: no se decidio todavia si el tenant actual se resuelve
+| por dominio/subdominio (mecanismo nativo de stancl/tenancy) o por el
+| tenant_id del usuario autenticado via Sanctum (ver "Pendiente de decidir"
+| en el CLAUDE.md raiz). El scaffold original de stancl/tenancy traia aqui
+| una ruta de ejemplo con InitializeTenancyByDomain que pisaba la ruta "/"
+| de routes/web.php (se registra despues y sobreescribe la entrada en la
+| coleccion de rutas), rompiendo la app fuera de un dominio de tenant.
 |
 */
-
-Route::middleware([
-    'web',
-    InitializeTenancyByDomain::class,
-    PreventAccessFromCentralDomains::class,
-])->group(function () {
-    Route::get('/', function () {
-        return 'This is your multi-tenant application. The id of the current tenant is ' . tenant('id');
-    });
-});

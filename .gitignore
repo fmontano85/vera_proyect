@@ -1,0 +1,10 @@
+# Skills de Claude Code (clonadas desde GitHub vía `npx skills add`).
+# Reproducibles desde skills-lock.json — no se versionan.
+/.agents/
+/.claude/skills/
+
+# Sistema operativo / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -302,6 +302,33 @@ Selección hecha el 2026-09-12 aplicando la Regla 0 (sistema de skills por capas
 - **Proveedor de IA:** se mantiene únicamente Claude (Haiku/Sonnet) como stack cerrado de la sección 2 — no se abre a OpenAI ni otros proveedores por ahora.
 - **PHP/Composer local:** no se instalan en el host. Todo el backend se construye y corre dentro de Docker Compose (contenedor `api`), incluida la creación inicial del proyecto Laravel.
 
+### Estatus de sesión (2026-09-13)
+- **Skeleton de Fase 1 completado con Docker Compose.** Servicios `api`
+  (PHP 8.4-FPM + Horizon + scheduler vía supervisor), `mariadb` 11,
+  `meilisearch`; `redis` solo en desarrollo vía `docker-compose.override.yml`.
+  Todo corre en contenedores, nada instalado en el host.
+- Backend: instalados y configurados `laravel/sanctum`, `laravel/horizon`,
+  `laravel/scout` + `meilisearch/meilisearch-php`, `stancl/tenancy`,
+  `spatie/laravel-permission`, `spatie/laravel-activitylog`,
+  `spatie/laravel-data`. Migraciones base corridas.
+- **Decisión tomada sin preguntar (correlato directo de la sección 3.1, no
+  una decisión nueva):** `DatabaseTenancyBootstrapper` de `stancl/tenancy`
+  quedó deshabilitado — VERA usa base de datos única + `tenant_id` con
+  global scope, no una BD por tenant. También se comentaron los jobs
+  `CreateDatabase`/`MigrateDatabase`/`DeleteDatabase` del
+  `TenancyServiceProvider` por la misma razón.
+- **Pendiente de decidir con el usuario:** cómo se resuelve el tenant
+  actual en cada request — por dominio/subdominio (mecanismo nativo de
+  `stancl/tenancy`, ya scaffolded pero sin activar) o por el `tenant_id`
+  del usuario autenticado vía Sanctum (más natural para una SPA con un
+  solo dominio de frontend). No se implementó ninguna de las dos todavía.
+- Cómo levantar el entorno: `docker compose up -d` desde la raíz del
+  proyecto (con Docker Desktop corriendo). API en `http://localhost:8000`,
+  Meilisearch en `:7700`, MariaDB en `:3306`.
+- Próximo paso natural: crear los modelos de negocio de la sección 3.3
+  (`subjects`, `sources`, `articles`, `mentions`, `matches`, etc.) con el
+  global scope de tenant, o retomar la Fase 0 (POC) — no decidido aún.
+
 ### Contexto importante para retomar
 - **Git resuelto (2026-09-13):** estaba instalado en el sistema (`C:\Program Files\Git\bin\git.exe`) pero no en el PATH de la sesión de PowerShell activa en ese momento. Con el PATH refrescado funciona normal. Nota para sesiones futuras en esta shell: **cada invocación de PowerShell de esta herramienta arranca un proceso nuevo y no hereda el PATH refrescado** — hay que anteponer `$env:Path += ";C:\Program Files\Git\bin"` en cada comando que use `git` hasta que el usuario reinicie su entorno/terminal real.
 - Repositorio inicializado en `D:\usuario\2026\VERA` con ramas `main` y `develop` (convención de la sección "Git"). 2 commits iniciales: (1) skeleton de backend/frontend, (2) instalación de skills + `.gitignore` raíz.

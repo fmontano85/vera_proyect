@@ -6,6 +6,47 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ---
 
+## Estatus de sesión
+
+**Última actualización:** 2026-09-13 08:39
+
+### En qué estábamos
+Resolviendo el bloqueo de Git, instalando las skills pendientes de la Capa 1/2 de `mi-workflow`, y completando el skeleton de Fase 1 (Docker Compose + paquetes core de Laravel) para VERA. Se corrió `/code-review` nivel `high` sobre todo el diff acumulado y se corrigieron los hallazgos.
+
+### Qué se completó en esta sesión
+- Git resuelto e inicializado (ramas `main`/`develop`).
+- Instaladas las 4 skills que faltaban: `systematic-debugging`, `test-driven-development`, `ui-ux-pro-max`, `varlock`.
+- Docker Compose completo: `api` (PHP 8.4-FPM + Horizon + scheduler vía supervisor), `mariadb` 11, `meilisearch`; `redis` solo en desarrollo vía `docker-compose.override.yml`. Todo en contenedores, nada instalado en el host.
+- Backend: instalados y configurados `laravel/sanctum`, `laravel/horizon`, `laravel/scout` + `meilisearch/meilisearch-php`, `stancl/tenancy`, `spatie/laravel-permission`, `spatie/laravel-activitylog`, `spatie/laravel-data`. Migraciones base corridas.
+- `DatabaseTenancyBootstrapper` de `stancl/tenancy` deshabilitado a propósito (correlato directo de la sección 3.1, no una decisión nueva): VERA usa base de datos única + `tenant_id` con global scope, no una BD por tenant. Se comentaron también los jobs `CreateDatabase`/`MigrateDatabase`/`DeleteDatabase` del `TenancyServiceProvider` por la misma razón, y se registró el provider en `bootstrap/providers.php` (el instalador no lo hizo automáticamente).
+- Bug encontrado y corregido: `routes/tenant.php` traía una ruta `/` de ejemplo que pisaba la de `routes/web.php` (rompía la app entera fuera de contexto de tenant).
+- `/code-review high` corrido sobre el diff acumulado — 6 hallazgos, los 6 corregidos y verificados: `APP_KEY` se regeneraba en cada restart del contenedor, faltaba `statefulApi()` de Sanctum, migración de `activity_log` sin `down()`, secretos hardcodeados en `docker-compose.yml`, `MEILISEARCH_KEY` desincronizado entre contenedores, `REDIS_HOST` hardcodeado de forma que rompería producción.
+- Test suite base en verde. 8 commits en `develop`.
+
+### Pendiente / próximo paso
+- [ ] **Decidir cómo se resuelve el tenant actual en cada request**: por dominio/subdominio (mecanismo nativo de `stancl/tenancy`, scaffolded en `config/tenancy.php` pero sin activar) o por el `tenant_id` del usuario autenticado vía Sanctum (más natural para una SPA de un solo dominio de frontend). No se implementó ninguna de las dos todavía — es el bloqueador real antes de escribir cualquier modelo de negocio.
+- [ ] Crear los modelos de negocio de la sección 3.3 (`subjects`, `sources`, `articles`, `mentions`, `matches`, etc.) con el global scope de `tenant_id`.
+- [ ] Retomar la Fase 0 (POC de Google CSE / extracción de fecha / prompt de extracción, sección 5) — todavía no se ha hecho; no está decidido si va antes o después de los modelos de negocio.
+
+### Contexto importante para retomar
+- Cómo levantar el entorno: `docker compose up -d` desde la raíz del proyecto (con Docker Desktop corriendo). API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`.
+- Secretos ahora viven en un `.env` en la raíz del proyecto (gitignored) — ver `.env.example` para la plantilla. Sin ese archivo, `docker compose up` falla a propósito (variables obligatorias sin default débil).
+- El usuario prefiere que las sub-decisiones ya cubiertas por un criterio que dio explícitamente (ej. "todo Docker, nada en la PC") se resuelvan directamente en vez de volver a preguntar — solo preguntar cuando no hay un default razonable. Ver memoria `feedback-stop-asking-confirm-and-proceed` en el sistema de memoria de Claude Code.
+- Detalle técnico de Git y de correcciones previas: ver "Contexto importante para retomar" en la sección 10 más abajo.
+
+### Archivos tocados en esta sesión
+- `CLAUDE.md`, `.gitignore`, `.env` (no versionado), `.env.example`
+- `docker-compose.yml`, `docker-compose.override.yml`, `docker/api/*`, `docker/mariadb/my.cnf`
+- `backend/composer.json`, `backend/composer.lock`, `backend/.env`, `backend/.env.example`, `backend/.dockerignore`
+- `backend/app/Models/User.php`, `backend/app/Providers/{HorizonServiceProvider,TenancyServiceProvider}.php`
+- `backend/bootstrap/app.php`, `backend/bootstrap/providers.php`
+- `backend/config/{activitylog,horizon,permission,sanctum,scout,tenancy}.php`
+- `backend/database/migrations/2019_09_15_*`, `2026_09_13_*` (sanctum, permission, activitylog)
+- `backend/routes/api.php`, `backend/routes/tenant.php`
+- `backend/CLAUDE.md`, `backend/AGENTS.md` (corrección del bootstrap de Laravel Boost)
+
+---
+
 ## 1. Propósito del producto
 
 Permitir que un oficial de cumplimiento:
@@ -302,38 +343,9 @@ Selección hecha el 2026-09-12 aplicando la Regla 0 (sistema de skills por capas
 - **Proveedor de IA:** se mantiene únicamente Claude (Haiku/Sonnet) como stack cerrado de la sección 2 — no se abre a OpenAI ni otros proveedores por ahora.
 - **PHP/Composer local:** no se instalan en el host. Todo el backend se construye y corre dentro de Docker Compose (contenedor `api`), incluida la creación inicial del proyecto Laravel.
 
-### Estatus de sesión (2026-09-13)
-- **Skeleton de Fase 1 completado con Docker Compose.** Servicios `api`
-  (PHP 8.4-FPM + Horizon + scheduler vía supervisor), `mariadb` 11,
-  `meilisearch`; `redis` solo en desarrollo vía `docker-compose.override.yml`.
-  Todo corre en contenedores, nada instalado en el host.
-- Backend: instalados y configurados `laravel/sanctum`, `laravel/horizon`,
-  `laravel/scout` + `meilisearch/meilisearch-php`, `stancl/tenancy`,
-  `spatie/laravel-permission`, `spatie/laravel-activitylog`,
-  `spatie/laravel-data`. Migraciones base corridas.
-- **Decisión tomada sin preguntar (correlato directo de la sección 3.1, no
-  una decisión nueva):** `DatabaseTenancyBootstrapper` de `stancl/tenancy`
-  quedó deshabilitado — VERA usa base de datos única + `tenant_id` con
-  global scope, no una BD por tenant. También se comentaron los jobs
-  `CreateDatabase`/`MigrateDatabase`/`DeleteDatabase` del
-  `TenancyServiceProvider` por la misma razón.
-- **Pendiente de decidir con el usuario:** cómo se resuelve el tenant
-  actual en cada request — por dominio/subdominio (mecanismo nativo de
-  `stancl/tenancy`, ya scaffolded pero sin activar) o por el `tenant_id`
-  del usuario autenticado vía Sanctum (más natural para una SPA con un
-  solo dominio de frontend). No se implementó ninguna de las dos todavía.
-- Cómo levantar el entorno: `docker compose up -d` desde la raíz del
-  proyecto (con Docker Desktop corriendo). API en `http://localhost:8000`,
-  Meilisearch en `:7700`, MariaDB en `:3306`.
-- Próximo paso natural: crear los modelos de negocio de la sección 3.3
-  (`subjects`, `sources`, `articles`, `mentions`, `matches`, etc.) con el
-  global scope de tenant, o retomar la Fase 0 (POC) — no decidido aún.
-
-### Contexto importante para retomar
-- **Git resuelto (2026-09-13):** estaba instalado en el sistema (`C:\Program Files\Git\bin\git.exe`) pero no en el PATH de la sesión de PowerShell activa en ese momento. Con el PATH refrescado funciona normal. Nota para sesiones futuras en esta shell: **cada invocación de PowerShell de esta herramienta arranca un proceso nuevo y no hereda el PATH refrescado** — hay que anteponer `$env:Path += ";C:\Program Files\Git\bin"` en cada comando que use `git` hasta que el usuario reinicie su entorno/terminal real.
-- Repositorio inicializado en `D:\usuario\2026\VERA` con ramas `main` y `develop` (convención de la sección "Git"). 2 commits iniciales: (1) skeleton de backend/frontend, (2) instalación de skills + `.gitignore` raíz.
-- Las 4 skills antes bloqueadas ya están instaladas (ver "Skills activas" arriba).
-- **El proyecto ya NO está vacío**, a diferencia de lo que decía esta sección antes: existe un skeleton inicial sin terminar en `backend/` (skeleton base de `laravel/laravel`, PHP `^8.3`, sin ningún paquete del stack de la sección 2 — falta Sanctum, Horizon, Scout, `stancl/tenancy`, `spatie/*`; DB en `sqlite` por defecto, pendiente de configurar MariaDB; sin Docker Compose todavía) y en `frontend/` (scaffold de Vite + React 19 + TypeScript con TanStack Query, TanStack Router y Tailwind v4 ya en `package.json`, alineado con las decisiones confirmadas).
+### Contexto importante para retomar (acumulado, no cronológico)
+- **Git:** estaba instalado en el sistema (`C:\Program Files\Git\bin\git.exe`) pero no en el PATH de la sesión de PowerShell. Cada invocación de PowerShell de esta herramienta arranca un proceso nuevo que **no** hereda el PATH refrescado — anteponer `$env:Path += ";C:\Program Files\Git\bin"` en cada comando que use `git`, hasta que el usuario reinicie su entorno/terminal real.
+- Repositorio en `D:\usuario\2026\VERA` con ramas `main` y `develop` (convención de la sección "Git").
 - Se corrigieron `backend/CLAUDE.md` y `backend/AGENTS.md`: el scaffold de Laravel Boost traía instrucciones automáticas para instalar PHP/Composer en el host, que contradicen la decisión confirmada de trabajar todo dentro de Docker Compose. Ambos archivos ahora solo remiten a este `CLAUDE.md` raíz y prohíben instalar PHP/Composer local.
-- **Regla reforzada por el usuario (2026-09-13):** nada del producto (PHP, Composer, MariaDB, Meilisearch, Redis, etc.) se instala en la PC — todo se construye y corre dentro de Docker Compose. Esto ya estaba en "Decisiones confirmadas", pero el usuario lo repitió explícitamente al retomar el proyecto.
-- Pendiente de decidir con el usuario: si se retoma la Fase 0 (POC de Google CSE, extracción de fecha, prompt de extracción — sección 5) antes de completar el skeleton de Fase 1, o si se continúa completando `backend/`/`frontend/` con las dependencias reales del stack y el Docker Compose. No se asumió una respuesta; preguntar al retomar si no quedó resuelto en la misma sesión.
+- **Regla reforzada por el usuario (2026-09-13):** nada del producto (PHP, Composer, MariaDB, Meilisearch, Redis, etc.) se instala en la PC — todo se construye y corre dentro de Docker Compose.
+- Ver la sección "## Estatus de sesión" al inicio del archivo para el detalle de la sesión más reciente y el pendiente activo.

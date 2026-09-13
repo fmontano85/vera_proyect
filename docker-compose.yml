@@ -1,0 +1,63 @@
+services:
+  api:
+    build:
+      context: ./docker/api
+      dockerfile: Dockerfile
+    container_name: vera_api
+    restart: unless-stopped
+    volumes:
+      - ./backend:/var/www/html
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-vera}
+      DB_USERNAME: ${DB_USERNAME:-vera}
+      DB_PASSWORD: ${DB_PASSWORD:-vera}
+      MEILISEARCH_HOST: http://meilisearch:7700
+    depends_on:
+      - mariadb
+      - meilisearch
+    networks:
+      - vera
+
+  mariadb:
+    image: mariadb:11
+    container_name: vera_mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_DATABASE:-vera}
+      MARIADB_USER: ${DB_USERNAME:-vera}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-vera}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./docker/mariadb/my.cnf:/etc/mysql/conf.d/vera.cnf:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - vera
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: vera_meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_KEY:-masterKeyChangeMeInProduction}
+      MEILI_ENV: development
+    volumes:
+      - meilisearch_data:/meili_data
+    ports:
+      - "7700:7700"
+    networks:
+      - vera
+
+volumes:
+  mariadb_data:
+  meilisearch_data:
+
+networks:
+  vera:
+    driver: bridge

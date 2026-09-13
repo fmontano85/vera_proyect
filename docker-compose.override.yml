@@ -1,0 +1,21 @@
+# Cargado automáticamente por `docker compose up` en desarrollo local.
+# En producción (VPS), Redis corre compartido con el host (sección 2 del
+# CLAUDE.md) — este archivo NO se usa ahí; se levanta solo docker-compose.yml.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: vera_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - vera
+
+  api:
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - mariadb
+      - meilisearch
+      - redis

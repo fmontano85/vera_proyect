@@ -21,7 +21,9 @@ if [ "$1" = "/usr/bin/supervisord" ] || [ "$1" = "supervisord" ]; then
     echo "Esperando a MariaDB..."
     sleep 2
   done
-  php artisan key:generate --ansi --force
+  if ! grep -q "^APP_KEY=base64:" .env; then
+    php artisan key:generate --ansi --force
+  fi
   php artisan migrate --force
 fi
 

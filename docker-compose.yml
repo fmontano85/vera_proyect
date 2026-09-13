@@ -15,8 +15,16 @@ services:
       DB_PORT: 3306
       DB_DATABASE: ${DB_DATABASE:-vera}
       DB_USERNAME: ${DB_USERNAME:-vera}
-      DB_PASSWORD: ${DB_PASSWORD:-vera}
+      DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en tu .env (ver .env.example)}
       MEILISEARCH_HOST: http://meilisearch:7700
+      MEILISEARCH_KEY: ${MEILISEARCH_KEY:?Define MEILISEARCH_KEY en tu .env (ver .env.example)}
+      # Solo aplica en produccion (docker-compose.yml solo, sin el override
+      # de desarrollo) - Redis compartido con el host, seccion 2 del
+      # CLAUDE.md raiz. En desarrollo, docker-compose.override.yml
+      # sobreescribe esto con REDIS_HOST=redis.
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - mariadb
       - meilisearch
@@ -30,8 +38,8 @@ services:
     environment:
       MARIADB_DATABASE: ${DB_DATABASE:-vera}
       MARIADB_USER: ${DB_USERNAME:-vera}
-      MARIADB_PASSWORD: ${DB_PASSWORD:-vera}
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en tu .env (ver .env.example)}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en tu .env (ver .env.example)}
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./docker/mariadb/my.cnf:/etc/mysql/conf.d/vera.cnf:ro
@@ -45,7 +53,7 @@ services:
     container_name: vera_meilisearch
     restart: unless-stopped
     environment:
-      MEILI_MASTER_KEY: ${MEILISEARCH_KEY:-masterKeyChangeMeInProduction}
+      MEILI_MASTER_KEY: ${MEILISEARCH_KEY:?Define MEILISEARCH_KEY en tu .env (ver .env.example)}
       MEILI_ENV: development
     volumes:
       - meilisearch_data:/meili_data

@@ -1,3 +1,6 @@
+# Secretos de docker-compose (ver .env.example para la plantilla).
+/.env
+
 # Skills de Claude Code (clonadas desde GitHub vía `npx skills add`).
 # Reproducibles desde skills-lock.json — no se versionan.
 /.agents/

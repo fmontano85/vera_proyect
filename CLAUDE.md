@@ -282,12 +282,12 @@ Selección hecha el 2026-09-12 aplicando la Regla 0 (sistema de skills por capas
 - `mi-workflow` — instalada
 - `owasp-security` — instalada
 - `software-architecture` — instalada
-- `systematic-debugging` — **no instalada** (bloqueada, ver Contexto)
+- `systematic-debugging` — instalada (2026-09-13, `obra/superpowers@systematic-debugging`)
 
 ### Capa 2 — recomendadas para este proyecto
-- `ui-ux-pro-max` — **no instalada** (bloqueada). Aplica porque VERA es multi-módulo (consulta, vigilancia, coincidencias, evidencia, reportes, admin) y necesita un design system consistente entre pantallas. Es el default de diseño de este proyecto una vez instalada (no `frontend-design`, ya que no hay landing/pieza aislada).
-- `test-driven-development` — **no instalada** (bloqueada). Aplica por la lógica de negocio compleja (matching, extracción IA, pipeline de jobs) y las APIs REST.
-- `varlock` — **no instalada** (bloqueada). Aplica por el volumen de credenciales/API keys del proyecto (Google CSE, Anthropic, R2, SMTP, Sheets).
+- `ui-ux-pro-max` — instalada (2026-09-13, `nextlevelbuilder/ui-ux-pro-max-skill@ui-ux-pro-max`). Aplica porque VERA es multi-módulo (consulta, vigilancia, coincidencias, evidencia, reportes, admin) y necesita un design system consistente entre pantallas. Es el default de diseño de este proyecto (no `frontend-design`, ya que no hay landing/pieza aislada). **Nota:** el Gen security risk assessment del instalador la marcó como "High Risk" (Socket y Snyk la dan como bajo riesgo) — revisar el contenido antes de un uso serio.
+- `test-driven-development` — instalada (2026-09-13, `obra/superpowers@test-driven-development`). Aplica por la lógica de negocio compleja (matching, extracción IA, pipeline de jobs) y las APIs REST.
+- `varlock` — instalada (2026-09-13, `dmno-dev/varlock@varlock`). Aplica por el volumen de credenciales/API keys del proyecto (Google CSE, Anthropic, R2, SMTP, Sheets).
 - `pdf` — instalada. Aplica por los reportes/PDF bajo demanda del pipeline (sección 3.6 y 5).
 
 ### Capa 3 — pendientes según hito (no activar aún)
@@ -303,10 +303,10 @@ Selección hecha el 2026-09-12 aplicando la Regla 0 (sistema de skills por capas
 - **PHP/Composer local:** no se instalan en el host. Todo el backend se construye y corre dentro de Docker Compose (contenedor `api`), incluida la creación inicial del proyecto Laravel.
 
 ### Contexto importante para retomar
-- **Git no está instalado** en este entorno (Windows, `spawn git ENOENT` al ejecutar `npx skills add`). Esto bloquea dos cosas: (1) instalar las skills marcadas como "no instalada" arriba — los paquetes candidatos ya están identificados, ver tabla abajo; (2) inicializar el repositorio (`git init`) que el flujo de ramas de la sección "Git" de este documento (`main`/`develop`/`feature/*`) requiere. Instalar Git (ej. `winget install --id Git.Git -e`) y reintentar.
-- Paquetes candidatos ya evaluados (verificar instalaciones/reputación siguen vigentes antes de instalar, con `npx skills find <nombre>`):
-  - `obra/superpowers@systematic-debugging`
-  - `obra/superpowers@test-driven-development`
-  - `nextlevelbuilder/ui-ux-pro-max-skill@ui-ux-pro-max`
-  - `dmno-dev/varlock@varlock` (fuente oficial del proyecto, pocas instalaciones pero autor original)
-- Ningún código de VERA existe todavía; solo este `CLAUDE.md`. La Fase 0 (POC de Google CSE, extracción de fecha, prompt de extracción) es el punto de partida natural una vez resuelto el bloqueo de Git.
+- **Git resuelto (2026-09-13):** estaba instalado en el sistema (`C:\Program Files\Git\bin\git.exe`) pero no en el PATH de la sesión de PowerShell activa en ese momento. Con el PATH refrescado funciona normal. Nota para sesiones futuras en esta shell: **cada invocación de PowerShell de esta herramienta arranca un proceso nuevo y no hereda el PATH refrescado** — hay que anteponer `$env:Path += ";C:\Program Files\Git\bin"` en cada comando que use `git` hasta que el usuario reinicie su entorno/terminal real.
+- Repositorio inicializado en `D:\usuario\2026\VERA` con ramas `main` y `develop` (convención de la sección "Git"). 2 commits iniciales: (1) skeleton de backend/frontend, (2) instalación de skills + `.gitignore` raíz.
+- Las 4 skills antes bloqueadas ya están instaladas (ver "Skills activas" arriba).
+- **El proyecto ya NO está vacío**, a diferencia de lo que decía esta sección antes: existe un skeleton inicial sin terminar en `backend/` (skeleton base de `laravel/laravel`, PHP `^8.3`, sin ningún paquete del stack de la sección 2 — falta Sanctum, Horizon, Scout, `stancl/tenancy`, `spatie/*`; DB en `sqlite` por defecto, pendiente de configurar MariaDB; sin Docker Compose todavía) y en `frontend/` (scaffold de Vite + React 19 + TypeScript con TanStack Query, TanStack Router y Tailwind v4 ya en `package.json`, alineado con las decisiones confirmadas).
+- Se corrigieron `backend/CLAUDE.md` y `backend/AGENTS.md`: el scaffold de Laravel Boost traía instrucciones automáticas para instalar PHP/Composer en el host, que contradicen la decisión confirmada de trabajar todo dentro de Docker Compose. Ambos archivos ahora solo remiten a este `CLAUDE.md` raíz y prohíben instalar PHP/Composer local.
+- **Regla reforzada por el usuario (2026-09-13):** nada del producto (PHP, Composer, MariaDB, Meilisearch, Redis, etc.) se instala en la PC — todo se construye y corre dentro de Docker Compose. Esto ya estaba en "Decisiones confirmadas", pero el usuario lo repitió explícitamente al retomar el proyecto.
+- Pendiente de decidir con el usuario: si se retoma la Fase 0 (POC de Google CSE, extracción de fecha, prompt de extracción — sección 5) antes de completar el skeleton de Fase 1, o si se continúa completando `backend/`/`frontend/` con las dependencias reales del stack y el Docker Compose. No se asumió una respuesta; preguntar al retomar si no quedó resuelto en la misma sesión.

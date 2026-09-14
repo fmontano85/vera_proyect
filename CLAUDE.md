@@ -8,42 +8,47 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-13 08:39
+**Última actualización:** 2026-09-13 14:50
 
 ### En qué estábamos
-Resolviendo el bloqueo de Git, instalando las skills pendientes de la Capa 1/2 de `mi-workflow`, y completando el skeleton de Fase 1 (Docker Compose + paquetes core de Laravel) para VERA. Se corrió `/code-review` nivel `high` sobre todo el diff acumulado y se corrigieron los hallazgos.
+Resuelto el bloqueador que quedó pendiente de la sesión anterior: cómo se resuelve el tenant actual en cada request. Se implementó, con plan confirmado por el usuario (Regla 2), la resolución vía `tenant_id` del usuario autenticado (Sanctum), no por dominio/subdominio. De paso se instaló Pest (declarado en la sección 6 pero nunca instalado — el proyecto traía tests en estilo PHPUnit puro).
 
 ### Qué se completó en esta sesión
-- Git resuelto e inicializado (ramas `main`/`develop`).
-- Instaladas las 4 skills que faltaban: `systematic-debugging`, `test-driven-development`, `ui-ux-pro-max`, `varlock`.
-- Docker Compose completo: `api` (PHP 8.4-FPM + Horizon + scheduler vía supervisor), `mariadb` 11, `meilisearch`; `redis` solo en desarrollo vía `docker-compose.override.yml`. Todo en contenedores, nada instalado en el host.
-- Backend: instalados y configurados `laravel/sanctum`, `laravel/horizon`, `laravel/scout` + `meilisearch/meilisearch-php`, `stancl/tenancy`, `spatie/laravel-permission`, `spatie/laravel-activitylog`, `spatie/laravel-data`. Migraciones base corridas.
-- `DatabaseTenancyBootstrapper` de `stancl/tenancy` deshabilitado a propósito (correlato directo de la sección 3.1, no una decisión nueva): VERA usa base de datos única + `tenant_id` con global scope, no una BD por tenant. Se comentaron también los jobs `CreateDatabase`/`MigrateDatabase`/`DeleteDatabase` del `TenancyServiceProvider` por la misma razón, y se registró el provider en `bootstrap/providers.php` (el instalador no lo hizo automáticamente).
-- Bug encontrado y corregido: `routes/tenant.php` traía una ruta `/` de ejemplo que pisaba la de `routes/web.php` (rompía la app entera fuera de contexto de tenant).
-- `/code-review high` corrido sobre el diff acumulado — 6 hallazgos, los 6 corregidos y verificados: `APP_KEY` se regeneraba en cada restart del contenedor, faltaba `statefulApi()` de Sanctum, migración de `activity_log` sin `down()`, secretos hardcodeados en `docker-compose.yml`, `MEILISEARCH_KEY` desincronizado entre contenedores, `REDIS_HOST` hardcodeado de forma que rompería producción.
-- Test suite base en verde. 8 commits en `develop`.
+- Migración `add_tenant_id_to_users_table`: columna `tenant_id` nullable + FK a `tenants` + índice.
+- `App\Http\Middleware\InitializeTenancyFromAuthenticatedUser` (alias `tenant`): lee `tenant_id` del usuario autenticado, inicializa tenancy o responde 401/403. Registrado en `bootstrap/app.php`.
+- `TenancyServiceProvider` limpiado: quitados los middleware de identificación por dominio/subdominio/path (`makeTenancyMiddlewareHighestPriority`) y el mapeo de `routes/tenant.php`, que ya no aplican.
+- `routes/tenant.php` eliminado; las rutas de negocio van en `routes/api.php` bajo `middleware(['auth:sanctum', 'tenant'])`.
+- `User::tenant_id` deliberadamente fuera de `#[Fillable]` — la asignación de tenant es acción administrativa, no un campo que el usuario pueda mandar en el body de un request.
+- Pest instalado (`pestphp/pest` v4.7.8 + `pestphp/pest-plugin-laravel`; forzó bajar `phpunit/phpunit` a 12.5.33, única versión compatible con Pest v4 disponible). `tests/Pest.php` creado con `RefreshDatabase` para `Feature`.
+- `tests/Feature/TenancyResolutionTest.php`: 5 casos (inicializa tenant correcto, rechaza sin tenant, rechaza si el tenant fue borrado, rechaza sin autenticación, aísla el tenant entre dos usuarios). Los 7 tests del proyecto pasan.
+- Migración corrida en la BD de desarrollo (`docker exec vera_api php artisan migrate --force`).
 
 ### Pendiente / próximo paso
-- [ ] **Decidir cómo se resuelve el tenant actual en cada request**: por dominio/subdominio (mecanismo nativo de `stancl/tenancy`, scaffolded en `config/tenancy.php` pero sin activar) o por el `tenant_id` del usuario autenticado vía Sanctum (más natural para una SPA de un solo dominio de frontend). No se implementó ninguna de las dos todavía — es el bloqueador real antes de escribir cualquier modelo de negocio.
-- [ ] Crear los modelos de negocio de la sección 3.3 (`subjects`, `sources`, `articles`, `mentions`, `matches`, etc.) con el global scope de `tenant_id`.
-- [ ] Retomar la Fase 0 (POC de Google CSE / extracción de fecha / prompt de extracción, sección 5) — todavía no se ha hecho; no está decidido si va antes o después de los modelos de negocio.
+- [ ] Crear los modelos de negocio de la sección 3.3 (`subjects`, `sources`, `articles`, `mentions`, `matches`, etc.) con global scope de `tenant_id`, ya montado sobre la resolución de tenant recién implementada.
+- [ ] Cuando se agregue `spatie/laravel-permission` (`HasRoles`) al modelo `User` para el rol `superadmin`: decidir cómo un usuario sin `tenant_id` pero con rol `superadmin` atraviesa `InitializeTenancyFromAuthenticatedUser` sin ser rechazado (hoy el middleware exige `tenant_id` siempre — no se implementó el bypass de superadmin porque el trait de roles todavía no está en `User`, habría sido código muerto/no probable).
+- [ ] Retomar la Fase 0 (POC de Google CSE / extracción de fecha / prompt de extracción, sección 5) — no decidido todavía si va antes o después de los modelos de negocio.
 
 ### Contexto importante para retomar
 - Cómo levantar el entorno: `docker compose up -d` desde la raíz del proyecto (con Docker Desktop corriendo). API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`.
-- Secretos ahora viven en un `.env` en la raíz del proyecto (gitignored) — ver `.env.example` para la plantilla. Sin ese archivo, `docker compose up` falla a propósito (variables obligatorias sin default débil).
-- El usuario prefiere que las sub-decisiones ya cubiertas por un criterio que dio explícitamente (ej. "todo Docker, nada en la PC") se resuelvan directamente en vez de volver a preguntar — solo preguntar cuando no hay un default razonable. Ver memoria `feedback-stop-asking-confirm-and-proceed` en el sistema de memoria de Claude Code.
+- Para correr tests dentro del contenedor: `docker exec vera_api php artisan test` (o `vendor/bin/pest` directamente).
+- `QueueTenancyBootstrapper` sigue activo en `config/tenancy.php` (ya lo estaba) pero no se agregó un test dedicado para la propagación de tenant en jobs encolados: no hay todavía ningún Job real de negocio (Fase 1, sección 3.4) contra el cual probarlo con sentido, y un test con un closure encolado resultó no confiable (el closure se serializa, así que capturar el resultado por referencia no funciona). Cubrir esto cuando exista el primer Job real.
+- El usuario prefiere que las sub-decisiones ya cubiertas por un criterio que dio explícitamente se resuelvan directamente en vez de volver a preguntar — solo preguntar cuando no hay un default razonable, o cuando la decisión toca auth/autorización (Regla 2 de `mi-workflow`), en cuyo caso se presenta el plan ya decidido y se pide confirmar. Ver memoria `feedback-stop-asking-confirm-and-proceed`.
+- Se encontró y se borró un archivo `backend/vera` (SQLite espurio, 212 KB) creado por una invocación de `artisan`/`composer` dentro del contenedor que resolvió la conexión `sqlite` con `DB_DATABASE=vera` en vez de `:memory:`; no se investigó la causa raíz a fondo por ser de bajo impacto (no vuelve a ocurrir en operación normal, donde `DB_CONNECTION=mariadb` siempre aplica) — si reaparece, investigar cuál comando fuerza la conexión `sqlite`.
 - Detalle técnico de Git y de correcciones previas: ver "Contexto importante para retomar" en la sección 10 más abajo.
 
 ### Archivos tocados en esta sesión
-- `CLAUDE.md`, `.gitignore`, `.env` (no versionado), `.env.example`
-- `docker-compose.yml`, `docker-compose.override.yml`, `docker/api/*`, `docker/mariadb/my.cnf`
-- `backend/composer.json`, `backend/composer.lock`, `backend/.env`, `backend/.env.example`, `backend/.dockerignore`
-- `backend/app/Models/User.php`, `backend/app/Providers/{HorizonServiceProvider,TenancyServiceProvider}.php`
-- `backend/bootstrap/app.php`, `backend/bootstrap/providers.php`
-- `backend/config/{activitylog,horizon,permission,sanctum,scout,tenancy}.php`
-- `backend/database/migrations/2019_09_15_*`, `2026_09_13_*` (sanctum, permission, activitylog)
-- `backend/routes/api.php`, `backend/routes/tenant.php`
-- `backend/CLAUDE.md`, `backend/AGENTS.md` (corrección del bootstrap de Laravel Boost)
+- `CLAUDE.md`
+- `backend/app/Models/User.php`
+- `backend/app/Http/Middleware/InitializeTenancyFromAuthenticatedUser.php` (nuevo)
+- `backend/app/Providers/TenancyServiceProvider.php`
+- `backend/bootstrap/app.php`
+- `backend/config/tenancy.php`
+- `backend/routes/api.php`
+- `backend/routes/tenant.php` (eliminado)
+- `backend/database/migrations/2026_09_13_143326_add_tenant_id_to_users_table.php` (nuevo)
+- `backend/composer.json`, `backend/composer.lock` (Pest + pest-plugin-laravel, phpunit bajado a 12.5.33)
+- `backend/tests/Pest.php` (nuevo)
+- `backend/tests/Feature/TenancyResolutionTest.php` (nuevo)
 
 ---
 
@@ -342,6 +347,9 @@ Selección hecha el 2026-09-12 aplicando la Regla 0 (sistema de skills por capas
 - **Generador OpenAPI backend:** `dedoc/scramble`.
 - **Proveedor de IA:** se mantiene únicamente Claude (Haiku/Sonnet) como stack cerrado de la sección 2 — no se abre a OpenAI ni otros proveedores por ahora.
 - **PHP/Composer local:** no se instalan en el host. Todo el backend se construye y corre dentro de Docker Compose (contenedor `api`), incluida la creación inicial del proyecto Laravel.
+
+### Decisiones confirmadas (2026-09-13)
+- **Resolución de tenant:** por el `tenant_id` del usuario autenticado vía Sanctum (`App\Http\Middleware\InitializeTenancyFromAuthenticatedUser`, alias `tenant`), no por dominio/subdominio. Consistente con BD única + `tenant_id` (sección 3.1) y con el frontend SPA de un solo dominio (Cloudflare Pages) — evita gestionar wildcard TLS/DNS por tenant en un VPS de 2 vCore/4GB. Detalle en "Estatus de sesión".
 
 ### Contexto importante para retomar (acumulado, no cronológico)
 - **Git:** estaba instalado en el sistema (`C:\Program Files\Git\bin\git.exe`) pero no en el PATH de la sesión de PowerShell. Cada invocación de PowerShell de esta herramienta arranca un proceso nuevo que **no** hereda el PATH refrescado — anteponer `$env:Path += ";C:\Program Files\Git\bin"` en cada comando que use `git`, hasta que el usuario reinicie su entorno/terminal real.

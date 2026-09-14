@@ -31,9 +31,10 @@ return [
      * proposito: activarlo cambiaria de conexion de BD por tenant, que es
      * exactamente el modelo que este proyecto decidio NO usar.
      *
-     * Pendiente de decidir (no asumido aqui): si el tenant actual se
-     * resuelve por dominio/subdominio (identificacion nativa de este
-     * paquete) o por el tenant_id del usuario autenticado via Sanctum.
+     * Decidido: el tenant actual se resuelve por el tenant_id del usuario
+     * autenticado via Sanctum (App\Http\Middleware\InitializeTenancyFromAuthenticatedUser),
+     * no por dominio/subdominio. Por eso no hay middleware de identificacion
+     * de dominio registrado en TenancyServiceProvider.
      */
     'bootstrappers' => [
         // Stancl\Tenancy\Bootstrappers\DatabaseTenancyBootstrapper::class, // deshabilitado: BD unica

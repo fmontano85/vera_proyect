@@ -5,17 +5,12 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Stancl\Tenancy\Events;
 use Stancl\Tenancy\Listeners;
-use Stancl\Tenancy\Middleware;
 
 class TenancyServiceProvider extends ServiceProvider
 {
-    // By default, no namespace is used to support the callable array syntax.
-    public static string $controllerNamespace = '';
-
     public function events()
     {
         return [
@@ -82,12 +77,15 @@ class TenancyServiceProvider extends ServiceProvider
         //
     }
 
+    /**
+     * VERA resuelve tenancy por Sanctum + App\Http\Middleware\InitializeTenancyFromAuthenticatedUser
+     * (alias "tenant" en bootstrap/app.php), no por dominio/subdominio. Por
+     * eso no hay aqui middleware de identificacion de dominio ni routes/tenant.php:
+     * las rutas de negocio viven en routes/api.php bajo ese middleware.
+     */
     public function boot()
     {
         $this->bootEvents();
-        $this->mapRoutes();
-
-        $this->makeTenancyMiddlewareHighestPriority();
     }
 
     protected function bootEvents()
@@ -100,34 +98,6 @@ class TenancyServiceProvider extends ServiceProvider
 
                 Event::listen($event, $listener);
             }
-        }
-    }
-
-    protected function mapRoutes()
-    {
-        $this->app->booted(function () {
-            if (file_exists(base_path('routes/tenant.php'))) {
-                Route::namespace(static::$controllerNamespace)
-                    ->group(base_path('routes/tenant.php'));
-            }
-        });
-    }
-
-    protected function makeTenancyMiddlewareHighestPriority()
-    {
-        $tenancyMiddleware = [
-            // Even higher priority than the initialization middleware
-            Middleware\PreventAccessFromCentralDomains::class,
-
-            Middleware\InitializeTenancyByDomain::class,
-            Middleware\InitializeTenancyBySubdomain::class,
-            Middleware\InitializeTenancyByDomainOrSubdomain::class,
-            Middleware\InitializeTenancyByPath::class,
-            Middleware\InitializeTenancyByRequestData::class,
-        ];
-
-        foreach (array_reverse($tenancyMiddleware) as $middleware) {
-            $this->app[\Illuminate\Contracts\Http\Kernel::class]->prependToMiddlewarePriority($middleware);
         }
     }
 }

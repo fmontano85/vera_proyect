@@ -8,12 +8,14 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-14 15:26
+**Última actualización:** 2026-09-21
 
 ### En qué estábamos
-Sesión de continuación: el usuario dio credenciales reales de Google CSE y Anthropic. Se conectaron, se construyó el primer flujo de Fase 1 que faltaba (**consulta puntual por HTTP**, nada la disparaba todavía), se corrió el pipeline contra las APIs reales por primera vez, y en el proceso salieron dos bugs reales y un hueco de seguridad de costos que ya quedaron corregidos y con tests. **60 tests pasan.** Contenedores Docker quedan **detenidos** al cerrar esta sesión (pedido explícito del usuario) — todo lo de abajo asume que hay que levantarlos de nuevo para retomar.
+**Sesión del 2026-09-21 (corta):** solo se comitió todo el trabajo acumulado de Fase 1 — commit `121631c` en `develop` ("Agrega pipeline de Fase 1 y endpoint de consulta puntual"), **sin `Co-Authored-By`** (el `CLAUDE.md` del proyecto lo prohíbe y prevalece sobre el recordatorio de atribución del sistema). No se corrieron tests en esa sesión (último estado conocido: 60 en verde) ni se tocó código. El árbol quedó limpio tras el commit; los cambios de este archivo de estatus quedan sin comitear. El bloqueo de Google CSE (facturación) sigue igual.
 
-### Qué se completó en esta sesión
+**Sesión anterior (2026-09-14 tarde):** continuación: el usuario dio credenciales reales de Google CSE y Anthropic. Se conectaron, se construyó el primer flujo de Fase 1 que faltaba (**consulta puntual por HTTP**, nada la disparaba todavía), se corrió el pipeline contra las APIs reales por primera vez, y en el proceso salieron dos bugs reales y un hueco de seguridad de costos que ya quedaron corregidos y con tests. **60 tests pasan.** Contenedores Docker quedan **detenidos** al cerrar esta sesión (pedido explícito del usuario) — todo lo de abajo asume que hay que levantarlos de nuevo para retomar.
+
+### Qué se completó (sesión 2026-09-14 tarde; la del 2026-09-21 solo comitió, ver arriba)
 - **Credenciales reales cargadas** en `backend/.env` (`GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_CX`, `ANTHROPIC_API_KEY`) — confirmado que `backend/.env` está git-ignorado antes de tocarlo.
 - **Bug real corregido — modelo de Anthropic mal configurado:** `ANTHROPIC_MODEL_FAST` apuntaba a `claude-haiku-4-5` (sin sufijo de fecha), que no es un id real de la API — toda llamada real habría fallado. Corregido a `claude-haiku-4-5-20251001` en `.env` y en el default de `config/services.php`; 2 tests que tenían el nombre viejo hardcodeado ahora comparan contra `config('services.anthropic.model_fast'/'model_escalation')`. Verificado con una llamada real (HTTP 200).
 - **Endpoint de consulta puntual (primer flujo real de Fase 1, sección 5):**

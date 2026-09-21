@@ -18,6 +18,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => \App\Http\Middleware\InitializeTenancyFromAuthenticatedUser::class,
         ]);
+
+        // SubstituteBindings (binding implicito de modelos en rutas, ej.
+        // "Subject $subject") corre antes que cualquier middleware nombrado
+        // sin prioridad explicita. Sin esto, un modelo con global scope de
+        // tenant_id se resuelve ANTES de que el tenant este inicializado -
+        // fuga de datos entre tenants via route-model-binding.
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: \App\Http\Middleware\InitializeTenancyFromAuthenticatedUser::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

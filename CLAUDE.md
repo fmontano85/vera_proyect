@@ -8,47 +8,100 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-13 14:50
+**Última actualización:** 2026-09-14 15:26
 
 ### En qué estábamos
-Resuelto el bloqueador que quedó pendiente de la sesión anterior: cómo se resuelve el tenant actual en cada request. Se implementó, con plan confirmado por el usuario (Regla 2), la resolución vía `tenant_id` del usuario autenticado (Sanctum), no por dominio/subdominio. De paso se instaló Pest (declarado en la sección 6 pero nunca instalado — el proyecto traía tests en estilo PHPUnit puro).
+Sesión de continuación: el usuario dio credenciales reales de Google CSE y Anthropic. Se conectaron, se construyó el primer flujo de Fase 1 que faltaba (**consulta puntual por HTTP**, nada la disparaba todavía), se corrió el pipeline contra las APIs reales por primera vez, y en el proceso salieron dos bugs reales y un hueco de seguridad de costos que ya quedaron corregidos y con tests. **60 tests pasan.** Contenedores Docker quedan **detenidos** al cerrar esta sesión (pedido explícito del usuario) — todo lo de abajo asume que hay que levantarlos de nuevo para retomar.
 
 ### Qué se completó en esta sesión
-- Migración `add_tenant_id_to_users_table`: columna `tenant_id` nullable + FK a `tenants` + índice.
-- `App\Http\Middleware\InitializeTenancyFromAuthenticatedUser` (alias `tenant`): lee `tenant_id` del usuario autenticado, inicializa tenancy o responde 401/403. Registrado en `bootstrap/app.php`.
-- `TenancyServiceProvider` limpiado: quitados los middleware de identificación por dominio/subdominio/path (`makeTenancyMiddlewareHighestPriority`) y el mapeo de `routes/tenant.php`, que ya no aplican.
-- `routes/tenant.php` eliminado; las rutas de negocio van en `routes/api.php` bajo `middleware(['auth:sanctum', 'tenant'])`.
-- `User::tenant_id` deliberadamente fuera de `#[Fillable]` — la asignación de tenant es acción administrativa, no un campo que el usuario pueda mandar en el body de un request.
-- Pest instalado (`pestphp/pest` v4.7.8 + `pestphp/pest-plugin-laravel`; forzó bajar `phpunit/phpunit` a 12.5.33, única versión compatible con Pest v4 disponible). `tests/Pest.php` creado con `RefreshDatabase` para `Feature`.
-- `tests/Feature/TenancyResolutionTest.php`: 5 casos (inicializa tenant correcto, rechaza sin tenant, rechaza si el tenant fue borrado, rechaza sin autenticación, aísla el tenant entre dos usuarios). Los 7 tests del proyecto pasan.
-- Migración corrida en la BD de desarrollo (`docker exec vera_api php artisan migrate --force`).
+- **Credenciales reales cargadas** en `backend/.env` (`GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_CX`, `ANTHROPIC_API_KEY`) — confirmado que `backend/.env` está git-ignorado antes de tocarlo.
+- **Bug real corregido — modelo de Anthropic mal configurado:** `ANTHROPIC_MODEL_FAST` apuntaba a `claude-haiku-4-5` (sin sufijo de fecha), que no es un id real de la API — toda llamada real habría fallado. Corregido a `claude-haiku-4-5-20251001` en `.env` y en el default de `config/services.php`; 2 tests que tenían el nombre viejo hardcodeado ahora comparan contra `config('services.anthropic.model_fast'/'model_escalation')`. Verificado con una llamada real (HTTP 200).
+- **Endpoint de consulta puntual (primer flujo real de Fase 1, sección 5):**
+  - `POST /api/subjects/{subject}/buscar` — dispara `RunSubjectSearchJob` contra todas las `sources` activas de tipo `cse` (`App\Actions\Subjects\IniciarConsultaPuntual`). 403 para `lectura`/`superadmin`, 422 si no hay ninguna fuente `cse` activa. Nueva ability `buscar` en `SubjectPolicy` (mismo set de roles que `create`: `admin`/`oficial_cumplimiento`/`analista`).
+  - `GET /api/subjects/{subject}/matches` — lista las `matches` propuestas para ese subject (mismo permiso que `view`).
+  - `php artisan vera:demo "Nombre"` (`app/Console/Commands/CrearDemo.php`) — crea tenant + usuario `oficial_cumplimiento` + token Sanctum + `Source` cse activa + `Subject` de prueba de un tiro, e imprime los `curl` listos. Solo dev (se niega en `production`).
+  - Tests nuevos: `tests/Feature/SubjectSearchEndpointTest.php` (permisos + dispatch + 422).
+- **Bug de seguridad de costos corregido — sin tope de cuota diaria:** `GOOGLE_CSE_DAILY_LIMIT` estaba definido en config pero **nada lo hacía cumplir en ningún lado** (el comentario viejo en `GoogleCseAdapter` decía "es responsabilidad del scheduler", que ni existe todavía). Con el endpoint de consulta puntual ya en producción, cualquier `analista` repitiendo la llamada podía pasarse de la cuota gratis sin ningún freno. Ahora `GoogleCseAdapter::buscar()` reserva cupo con un contador atómico en cache (`Cache::add()` + `Cache::increment()`, llave por día UTC) **antes** de llamar a Google — si ya se alcanzó el límite, lanza excepción y la llamada real nunca sale de la app. Funciona igual con `CACHE_STORE=array` (tests) y `redis` (prod/dev) — probado contra el Redis real del contenedor. 2 tests nuevos en `tests/Unit/GoogleCseAdapterTest.php`.
+- **Primera corrida real del pipeline** (vía `vera:demo` + `POST /buscar`): confirmó que Anthropic funciona (HTTP 200 real) y que Google CSE está bloqueado — ver "Pendiente" abajo, no es un bug de código.
+- Diagnóstico de un falso arranque: tras rotar la API key de Google en el proyecto, Horizon siguió fallando con la key vieja porque el worker la carga en memoria una sola vez al arrancar — hubo que `docker compose restart api`. Ya documentado como paso obligatorio abajo.
+- Limpieza repetida del archivo espurio `backend/vera` (SQLite) — reapareció dos veces esta sesión, se sigue borrando sin investigar más (ver nota ya existente sobre esto).
+
+### Qué existe hoy (por módulo)
+
+**Multi-tenancy y auth**
+- Tenant se resuelve por `tenant_id` del usuario autenticado (Sanctum), no por dominio (`App\Http\Middleware\InitializeTenancyFromAuthenticatedUser`). `superadmin` recibe 403 en toda ruta de tenant (su alcance es tenants/planes/fuentes globales, no datos de negocio — ver "Bugs relevantes" abajo).
+- 5 roles de la sección 3.2 (`RoleSeeder`), `spatie/laravel-permission`. `SubjectPolicy` controla create (no `lectura`).
+- `Subject` tiene `LogsActivity` (spatie/laravel-activitylog) — crear/editar queda auditado.
+
+**Modelos de negocio (sección 3.3)**
+- Con `tenant_id` (vía `BelongsToTenant`, algunos también `DerivesTenantFromSubject` porque cuelgan de un `Subject`): `subjects`, `subject_aliases`, `sanction_matches`, `search_runs`, `matches` (modelo `MentionMatch`, no `Match` — palabra reservada en PHP).
+- Globales (sin `tenant_id`, catálogo o contenido no atribuible a un tenant): `sources`, `sanction_lists`, `sanction_entries`, `articles`, `mentions`, `extractions`.
+- Pendiente de sección 3.3: nada más — todo lo de Fase 1 está creado.
+
+**Pipeline (sección 3.4)**
+- `RunSubjectSearchJob`: query con nombre canónico + aliases → `GoogleCseAdapter` → `search_runs` → encola `FetchArticleJob` por URL. Idempotente (no repite la búsqueda del mismo subject+source el mismo día). `GoogleCseAdapter` impone tope duro de `GOOGLE_CSE_DAILY_LIMIT` con contador atómico en cache antes de llamar a Google — ver "Qué se completó en esta sesión".
+- `FetchArticleJob`: descarga, extrae fecha (meta/JSON-LD/`<time>`, fallback genérico — selectores por medio son Fase 0), hash SHA-256, guarda evidencia en `Storage` (disco `r2` en prod, `local` en dev), descarta si está fuera de `ARTICLE_WINDOW_DAYS`. Encola `ExtractEntitiesJob`.
+- `ExtractEntitiesJob`: limpia HTML, prompt versionado (`resources/prompts/extraction/v1.md`), llama a Haiku, valida con DTOs de `spatie/laravel-data` (`rol` es un enum PHP real — rechaza valores fuera del contrato antes de tocar la BD), escala a Sonnet si baja confianza o roles cruzados, crea `mentions`, encola `MatchMentionsJob`. Idempotente; `failed()` marca `estado_extraccion = fallido`.
+- `MatchMentionsJob`: recorre todos los tenants (`tenancy()->runForMultiple()`), busca en Meilisearch (Scout, `Subject` es `Searchable`) filtrado por `tenant_id`, guarda cada hit en `matches` como `pendiente`. **Umbral/rarity gate sin calibrar a propósito** (sección 9 — "hasta entonces todo match es pendiente", textual).
+- `ImportSanctionListsJob`: solo OFAC SDN tiene adaptador (URL pública verificada). ONU/UE sin adaptador — sus URLs candidatas no resolvieron (404/403), hace falta confirmar las vigentes. Idempotente, transaccional, upsert por lotes.
+
+**Terceros — todo el código listo, solo faltan credenciales**
+- `GOOGLE_CSE_API_KEY`/`GOOGLE_CSE_CX` (Google CSE) y `ANTHROPIC_API_KEY` (Anthropic) vacías en `backend/.env`. Nada quedó a medias esperándolas: la lógica está 100% testeada con fakes/fixtures.
+- `costo` en `search_runs`/`extractions` queda `null` a propósito (Google CSE no da costo por request; Anthropic necesita tarifa real vigente, no inventada).
+
+**API HTTP (Fase 1, sección 5 — "consulta puntual")**
+- `POST /api/subjects/{subject}/buscar` y `GET /api/subjects/{subject}/matches` (`SubjectController`), primer flujo de Fase 1 que dispara el pipeline desde fuera de tinker. Ver "Qué se completó en esta sesión".
+- `php artisan vera:demo "Nombre"` — bootstrap de datos de prueba (tenant + usuario + token + source + subject) para probar por HTTP sin frontend.
+
+**Documentación**
+- `docs/MANUAL_TECNICO.md`: manual completo de producción (estructura de Regla 6), con guía paso a paso de Google CSE/Anthropic/R2/SMTP/Sheets. Marca como pendiente Gotenberg vs. Cloudflare Browser Rendering (sección 2 no lo resuelve).
+
+### Bugs/riesgos reales encontrados y corregidos (histórico — el más reciente arriba)
+- **Sin tope de cuota diaria de Google CSE (2026-09-14, tarde):** ver "Qué se completó en esta sesión" — nada hacía cumplir `GOOGLE_CSE_DAILY_LIMIT` y el endpoint de consulta puntual ya podía dispararse repetidamente. Corregido con contador atómico en `GoogleCseAdapter`.
+- **`ANTHROPIC_MODEL_FAST` con id de modelo inválido (2026-09-14, tarde):** apuntaba a `claude-haiku-4-5` sin fecha, no es un id real de la API — toda llamada real habría fallado. Corregido a `claude-haiku-4-5-20251001`.
+- **IDOR entre tenants vía route-model-binding**: `SubstituteBindings` corría antes que el middleware `tenant`. Fix con `$middleware->prependToPriorityList()` en `bootstrap/app.php` — cubre cualquier modelo futuro, no solo `subjects`.
+- **Fuga cross-tenant vía superadmin**: el primer diseño del bypass lo dejaba pasar por rutas de tenant sin inicializar tenancy, viendo todo mezclado. Ahora superadmin recibe 403 en esas rutas — su alcance no incluye datos de negocio de un tenant.
+- **Bypass de tenant en `DerivesTenantFromSubject`**: la primera versión usaba `Subject::withoutTenancy()->find()`, que permitía referenciar el `subject_id` de OTRO tenant y atribuirle el hijo silenciosamente. Ahora usa `Subject::findOrFail()` normal (con su scope) — falla cerrado.
+- **Pipeline no conectado**: cada job pasaba sus tests aislados pero `FetchArticleJob` nunca disparaba `ExtractEntitiesJob` — un artículo se quedaba en `pendiente` para siempre. Ya conectado.
+- **Incidente de un subagente de `/code-review`**: borró de la working tree real trabajo legítimo de la sesión (pensó que eran restos propios) y revirtió una config. Se detectó porque el propio reporte lo confesó; se reconstruyó todo. **Corre `git status` después de cada `/code-review`, no confíes solo en su reporte de hallazgos.**
+- Detalle completo de cada ronda de code-review (idempotencia de jobs, transacciones, timeouts de Horizon, etc.) vive en el historial de commits/PRs una vez que se comitee — no se repite aquí para no inflar este archivo.
+
+### Cómo probarlo en desarrollo (con credenciales reales — ya cargadas)
+1. `docker compose up -d` (raíz del proyecto) — quedaron detenidos al cerrar la sesión anterior.
+2. `docker exec vera_api php artisan vera:demo "Nombre a buscar"` — imprime tenant/usuario/token/source/subject y los `curl` listos para copiar.
+3. `curl -X POST .../api/subjects/{id}/buscar` con el token impreso, esperar unos segundos, luego `curl .../api/subjects/{id}/matches`.
+4. Si algo falla en la llamada real a Google/Anthropic (no en el código): `docker exec vera_api php artisan queue:failed` para ver la excepción real capturada.
+5. **Importante:** si se rota alguna API key en el proveedor (Google/Anthropic) con los contenedores ya corriendo, hace falta `docker compose restart api` — Horizon carga el `.env` una sola vez al arrancar el worker, no relee cambios en caliente.
 
 ### Pendiente / próximo paso
-- [ ] Crear los modelos de negocio de la sección 3.3 (`subjects`, `sources`, `articles`, `mentions`, `matches`, etc.) con global scope de `tenant_id`, ya montado sobre la resolución de tenant recién implementada.
-- [ ] Cuando se agregue `spatie/laravel-permission` (`HasRoles`) al modelo `User` para el rol `superadmin`: decidir cómo un usuario sin `tenant_id` pero con rol `superadmin` atraviesa `InitializeTenancyFromAuthenticatedUser` sin ser rechazado (hoy el middleware exige `tenant_id` siempre — no se implementó el bypass de superadmin porque el trait de roles todavía no está en `User`, habría sido código muerto/no probable).
-- [ ] Retomar la Fase 0 (POC de Google CSE / extracción de fecha / prompt de extracción, sección 5) — no decidido todavía si va antes o después de los modelos de negocio.
+- [ ] **Vincular facturación en Google Cloud** al proyecto dueño de `GOOGLE_CSE_API_KEY` (https://console.cloud.google.com/billing/linkedaccount) — confirmado con el usuario que hoy NO está vinculada. Sin esto, Google responde `403 PERMISSION_DENIED: "This project does not have the access to Custom Search JSON API"` aunque la API figure habilitada y la key sea válida (no cobra dentro de la cuota gratis de 100/día, pero Google exige la cuenta vinculada para servir la API). Confirmado que no es propagación (se probó 6 veces en 3 min tras habilitar la API, siempre 403).
+- [ ] Una vez vinculada la facturación: reprobar la key directo, `docker exec vera_api php artisan queue:retry all` (ya hay un `RunSubjectSearchJob` fallido en cola del subject de prueba `Juan Carlos Pérez`), y revisar `search_runs`/`matches`.
+- [ ] Adaptadores de ONU consolidada y UE — falta confirmar la URL pública vigente de cada una.
+- [ ] Enriquecer `OfacSdnAdapter` con `alt.csv`/`add.csv` (aliases, país) — hoy vacíos.
+- [ ] Costo real por request/token de Google CSE y Anthropic — falta la tarifa vigente.
+- [ ] Índice de Meilisearch de test comparte instancia con dev (bajo impacto, cada test usa `tenant_id` nuevo).
+- [ ] `DatabaseSeeder` usa `WithoutModelEvents` — si algún día se siembran modelos con `BelongsToTenant`/`DerivesTenantFromSubject` ahí, no se ejecutarían esos hooks. No es problema hoy.
+- [ ] Frontend: sigue siendo solo scaffold (Vite+React+TanStack), sin pantallas funcionales.
 
 ### Contexto importante para retomar
-- Cómo levantar el entorno: `docker compose up -d` desde la raíz del proyecto (con Docker Desktop corriendo). API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`.
-- Para correr tests dentro del contenedor: `docker exec vera_api php artisan test` (o `vendor/bin/pest` directamente).
-- `QueueTenancyBootstrapper` sigue activo en `config/tenancy.php` (ya lo estaba) pero no se agregó un test dedicado para la propagación de tenant en jobs encolados: no hay todavía ningún Job real de negocio (Fase 1, sección 3.4) contra el cual probarlo con sentido, y un test con un closure encolado resultó no confiable (el closure se serializa, así que capturar el resultado por referencia no funciona). Cubrir esto cuando exista el primer Job real.
-- El usuario prefiere que las sub-decisiones ya cubiertas por un criterio que dio explícitamente se resuelvan directamente en vez de volver a preguntar — solo preguntar cuando no hay un default razonable, o cuando la decisión toca auth/autorización (Regla 2 de `mi-workflow`), en cuyo caso se presenta el plan ya decidido y se pide confirmar. Ver memoria `feedback-stop-asking-confirm-and-proceed`.
-- Se encontró y se borró un archivo `backend/vera` (SQLite espurio, 212 KB) creado por una invocación de `artisan`/`composer` dentro del contenedor que resolvió la conexión `sqlite` con `DB_DATABASE=vera` en vez de `:memory:`; no se investigó la causa raíz a fondo por ser de bajo impacto (no vuelve a ocurrir en operación normal, donde `DB_CONNECTION=mariadb` siempre aplica) — si reaparece, investigar cuál comando fuerza la conexión `sqlite`.
-- Detalle técnico de Git y de correcciones previas: ver "Contexto importante para retomar" en la sección 10 más abajo.
+- **Contenedores quedaron detenidos** al cerrar esta sesión (`docker compose stop`, pedido explícito del usuario) — los datos persisten (volúmenes `mariadb_data`/`meilisearch_data` intactos, no se hizo `down -v`). Levantar con `docker compose up -d`. API `:8000`, Meilisearch `:7700`, MariaDB `:3306`, Redis `:6379`. Tests: `docker exec vera_api php artisan test`.
+- **Si Docker Desktop mismo no está corriendo** (no solo los contenedores): esta sesión tuvo que lanzarlo dos veces desde `C:\Program Files\Docker\Docker\Docker Desktop.exe` porque se cayó a mitad de sesión sin causa clara — si al levantar da error de "daemon not running", lanzar Docker Desktop y esperar antes de `docker compose up -d`.
+- El tenant/usuario/subject/source que dejó `vera:demo` esta sesión (`Juan Carlos Pérez`) siguen en la BD real (persistente), pero el **token Sanctum no quedó guardado en ningún lado** — Sanctum solo lo muestra una vez al crearlo. Para retomar la prueba: correr `vera:demo` de nuevo (crea un tenant/usuario nuevo, no rompe nada) o generar un token nuevo para el usuario existente por tinker.
+- **Patrón a repetir:** un modelo con `tenant_id` propio que cuelga de un `Subject` usa `App\Models\Concerns\DerivesTenantFromSubject` — nunca `withoutTenancy()` para esto, debe fallar cerrado. Un modelo de negocio nuevo expuesto por route-model-binding ya queda protegido por el fix de prioridad de middleware, no hace falta repetirlo.
+- **Patrón a repetir:** cualquier llamada a un servicio externo de pago por uso (Google CSE hoy; si se agrega otro proveedor con cuota/tarifa después) debe tener su propio candado de cuota en el punto exacto donde se hace el HTTP call, no confiar en que el caller de arriba lo respete — ver `GoogleCseAdapter::reservarCupoDiario()`.
+- El usuario prefiere que las sub-decisiones ya cubiertas por un criterio explícito se resuelvan directo, sin volver a preguntar — solo preguntar cuando no hay default razonable o la decisión toca auth/BD (ahí sí, plan + confirmar). Ver memoria `feedback-stop-asking-confirm-and-proceed`.
+- **No auto-bloquearse por una credencial faltante**: si una tarea tiene partes que no la necesitan, seguir con esas en vez de parar todo. Ver memoria `feedback-dont-self-block-decompose`.
+- El archivo espurio `backend/vera` (SQLite) reapareció dos veces esta sesión sin que corriera ningún `/code-review` — la causa documentada (subagente de code-review) no aplica esta vez; origen real todavía sin confirmar (sospecha: algo del editor/IDE corriendo artisan fuera de Docker). Se borra cuando aparece, no es dañino.
+- Sin línea `Co-Authored-By` en los commits de este proyecto — el usuario lo pidió explícitamente.
+- Detalle técnico de Git (PATH de PowerShell) y decisiones de la sesión del 2026-09-12: ver sección 10 más abajo.
 
 ### Archivos tocados en esta sesión
-- `CLAUDE.md`
-- `backend/app/Models/User.php`
-- `backend/app/Http/Middleware/InitializeTenancyFromAuthenticatedUser.php` (nuevo)
-- `backend/app/Providers/TenancyServiceProvider.php`
-- `backend/bootstrap/app.php`
-- `backend/config/tenancy.php`
-- `backend/routes/api.php`
-- `backend/routes/tenant.php` (eliminado)
-- `backend/database/migrations/2026_09_13_143326_add_tenant_id_to_users_table.php` (nuevo)
-- `backend/composer.json`, `backend/composer.lock` (Pest + pest-plugin-laravel, phpunit bajado a 12.5.33)
-- `backend/tests/Pest.php` (nuevo)
-- `backend/tests/Feature/TenancyResolutionTest.php` (nuevo)
+- `backend/.env`, `backend/config/services.php` — credenciales reales + fix del id de modelo de Anthropic.
+- `backend/app/Sources/GoogleCseAdapter.php` — candado de cuota diaria.
+- `backend/app/Actions/Subjects/IniciarConsultaPuntual.php` (nuevo), `backend/app/Http/Controllers/SubjectController.php`, `backend/app/Policies/SubjectPolicy.php`, `backend/routes/api.php` — endpoint de consulta puntual.
+- `backend/app/Console/Commands/CrearDemo.php` (nuevo) — comando `vera:demo`.
+- `backend/tests/Feature/SubjectSearchEndpointTest.php` (nuevo), `backend/tests/Unit/GoogleCseAdapterTest.php` (2 tests nuevos), `backend/tests/Feature/ExtractEntitiesJobTest.php` (2 asserts corregidos).
+- Sesión anterior (2026-09-14 mañana), sin cambios adicionales esta sesión: prácticamente todo `backend/app/{Models,Jobs,Http,Sources,Services,Data,Enums,Policies,Actions}`, `backend/database/{migrations,factories,seeders}`, `backend/config/{tenancy,scout,services,filesystems,vera}.php`, `backend/tests/`, `backend/resources/prompts/`, `docs/MANUAL_TECNICO.md`. Para el detalle exacto archivo por archivo, `git status`/`git diff` en la raíz del repo es más confiable que mantener una lista manual aquí.
 
 ---
 
@@ -111,10 +164,10 @@ Principio no negociable: **el sistema propone coincidencias, el analista resuelv
 
 ### 3.1 Multi-tenancy
 - Un tenant = un sujeto obligado (empresa cliente).
-- Base de datos única; todo modelo de negocio lleva `tenant_id` con global scope.
+- Base de datos única; todo modelo de negocio lleva `tenant_id` con global scope. **Excepción confirmada:** `articles` y `sources` son catálogos globales deduplicados (por URL y por fuente respectivamente), sin `tenant_id` propio — el aislamiento de tenant en el pipeline de screening vive en `mentions`/`matches`, que sí llevan `tenant_id`.
 - Índices de Meilisearch únicos por entidad con atributo filtrable `tenant_id`; toda búsqueda filtra por tenant.
 - Usuarios pertenecen a un solo tenant. Rol `superadmin` (propietario de la plataforma) opera fuera de tenant.
-- Almacenamiento en R2 con prefijo `tenants/{tenant_id}/evidence/`.
+- Almacenamiento en R2: evidencia de `articles` es global (sin prefijo de tenant, ver excepción arriba); cualquier otro archivo específico de un tenant va con prefijo `tenants/{tenant_id}/...`.
 
 ### 3.2 Roles
 - `superadmin`: gestión de tenants, planes, facturación, fuentes globales.
@@ -257,7 +310,8 @@ Resultado esperado: informe corto en `docs/poc/` con métricas y decisiones.
 ### Backend
 - Arquitectura: `app/Actions`, `app/Jobs`, `app/Sources`, `app/Services/{Search,Extraction,Matching,Evidence,Sanctions}`, `app/Data` (DTOs).
 - Controladores delgados; lógica en Actions y Services.
-- Toda consulta a modelos de negocio pasa por el scope de tenant. Prohibido `withoutGlobalScopes` fuera de superadmin.
+- Toda consulta a modelos de negocio pasa por el scope de tenant. Prohibido `withoutGlobalScopes`/`withoutTenancy()` fuera de superadmin.
+- **El scope de tenant (`Stancl\Tenancy\Database\Concerns\BelongsToTenant`) no filtra si `tenancy()` no está inicializado — falla abierto, no cerrado.** Todo código que consulte un modelo con ese trait fuera de un request HTTP normal (Jobs, comandos `artisan`, `tinker`, seeders) DEBE llamar `tenancy()->initialize($tenant)` explícitamente antes de la consulta, o se lee/escribe entre todos los tenants sin darse cuenta. Los controladores están cubiertos por el middleware `tenant`; los Jobs del pipeline (sección 3.4) tendrán que inicializar tenancy ellos mismos (revisar al implementarlos).
 - Pruebas: Pest. Cobertura obligatoria en matching, extracción (con respuestas grabadas) y aislamiento de tenant.
 - Migraciones con claves foráneas e índices explícitos en `tenant_id` + columnas de búsqueda.
 - Secretos solo en `.env`; nunca en código ni en commits.
@@ -350,6 +404,8 @@ Selección hecha el 2026-09-12 aplicando la Regla 0 (sistema de skills por capas
 
 ### Decisiones confirmadas (2026-09-13)
 - **Resolución de tenant:** por el `tenant_id` del usuario autenticado vía Sanctum (`App\Http\Middleware\InitializeTenancyFromAuthenticatedUser`, alias `tenant`), no por dominio/subdominio. Consistente con BD única + `tenant_id` (sección 3.1) y con el frontend SPA de un solo dominio (Cloudflare Pages) — evita gestionar wildcard TLS/DNS por tenant en un VPS de 2 vCore/4GB. Detalle en "Estatus de sesión".
+- **Roles:** los 5 roles de la sección 3.2 son globales (`spatie/laravel-permission` sin la feature de "teams") — no hace falta un rol por tenant porque cada usuario ya pertenece a un solo tenant vía `tenant_id`; el rol es solo la etiqueta de capacidad dentro de ese tenant.
+- **`articles` es global, deduplicado por URL** (no una fila por tenant). La sección 3.3 ("url única") y la 3.1 ("evidencia con prefijo `tenants/{tenant_id}/evidence/`") eran ambiguas entre sí sobre esto; se resolvió a favor de la lectura literal de "url única". El aislamiento de tenant en el pipeline de screening vive en `mentions`/`matches`, no en `articles`.
 
 ### Contexto importante para retomar (acumulado, no cronológico)
 - **Git:** estaba instalado en el sistema (`C:\Program Files\Git\bin\git.exe`) pero no en el PATH de la sesión de PowerShell. Cada invocación de PowerShell de esta herramienta arranca un proceso nuevo que **no** hereda el PATH refrescado — anteponer `$env:Path += ";C:\Program Files\Git\bin"` en cada comando que use `git`, hasta que el usuario reinicie su entorno/terminal real.

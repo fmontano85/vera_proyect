@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Database\Models\Tenant;
 
@@ -64,4 +65,15 @@ it('no filtra el tenant de un usuario hacia el tenant de otro', function () {
     expect($responseA->json('tenant_id'))->toBe($tenantA->id);
     expect($responseB->json('tenant_id'))->toBe($tenantB->id);
     expect($responseA->json('tenant_id'))->not->toBe($responseB->json('tenant_id'));
+});
+
+it('rechaza a un superadmin en una ruta de tenant, para no verla sin scope', function () {
+    $this->seed(RoleSeeder::class);
+
+    $user = User::factory()->create();
+    $user->assignRole('superadmin');
+
+    $this->actingAs($user)
+        ->getJson('/_test/tenant-actual')
+        ->assertForbidden();
 });

@@ -140,15 +140,10 @@ return [
         'host' => env('MEILISEARCH_HOST', 'http://localhost:7700'),
         'key' => env('MEILISEARCH_KEY'),
         'index-settings' => [
-            // 'users' => [
-            //     'filterableAttributes' => ['id', 'name', 'email'],
-            //     'embedders' => [
-            //         'default' => [
-            //             'source' => 'userProvided',
-            //             'dimensions' => 1536,
-            //         ],
-            //     ],
-            // ],
+            \App\Models\Subject::class => [
+                'filterableAttributes' => ['tenant_id'],
+                'searchableAttributes' => ['nombre_canonico', 'aliases'],
+            ],
         ],
         'model-settings' => [
             // User::class => [

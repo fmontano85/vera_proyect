@@ -60,6 +60,22 @@ return [
             'report' => false,
         ],
 
+        // Cloudflare R2 (evidencia, seccion 2/8 del CLAUDE.md raiz) - driver
+        // S3 de Laravel, compatible con la API S3 de R2. FILESYSTEM_DISK=r2
+        // activa este disco; en dev/test se usa 'local' por defecto.
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('R2_BUCKET'),
+            'url' => env('R2_URL'),
+            'endpoint' => env('R2_ACCOUNT_ID') ? 'https://'.env('R2_ACCOUNT_ID').'.r2.cloudflarestorage.com' : null,
+            'use_path_style_endpoint' => true,
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

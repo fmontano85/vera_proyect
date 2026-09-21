@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 use Stancl\Tenancy\Database\Models\Tenant;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -18,7 +19,7 @@ use Stancl\Tenancy\Database\Models\Tenant;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     /**
      * tenant_id queda fuera de Fillable a proposito: la asignacion de tenant

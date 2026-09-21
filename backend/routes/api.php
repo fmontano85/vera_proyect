@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\SubjectController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -21,5 +22,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 |
 */
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
-    //
+    Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show']);
+    Route::post('subjects/{subject}/buscar', [SubjectController::class, 'buscar']);
+    Route::get('subjects/{subject}/matches', [SubjectController::class, 'matches']);
 });

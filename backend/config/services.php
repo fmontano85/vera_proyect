@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    'google_cse' => [
+        'api_key' => env('GOOGLE_CSE_API_KEY'),
+        'cx' => env('GOOGLE_CSE_CX'),
+        'daily_limit' => (int) env('GOOGLE_CSE_DAILY_LIMIT', 100),
+    ],
+
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'model_fast' => env('ANTHROPIC_MODEL_FAST', 'claude-haiku-4-5-20251001'),
+        'model_escalation' => env('ANTHROPIC_MODEL_ESCALATION', 'claude-sonnet-5'),
+    ],
+
 ];

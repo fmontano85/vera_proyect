@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
 
-#[Fillable(['subject_id', 'source_id', 'query', 'resultados', 'costo'])]
+#[Fillable(['subject_id', 'source_id', 'query', 'tags', 'dias_atras', 'resultados', 'costo'])]
 class SearchRun extends Model
 {
     /** @use HasFactory<SearchRunFactory> */
@@ -21,6 +21,7 @@ class SearchRun extends Model
     protected function casts(): array
     {
         return [
+            'tags' => 'array',
             'resultados' => 'array',
             'costo' => 'decimal:4',
         ];

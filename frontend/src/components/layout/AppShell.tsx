@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { LogOut, Search, ShieldCheck } from 'lucide-react';
+import { LogOut, Search, ShieldCheck, Tags } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
   DropdownMenu,
@@ -12,7 +12,10 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useCurrentUser, useLogout } from '@/features/auth/useAuth';
 
-const NAV_ITEMS = [{ to: '/subjects', label: 'Sujetos', icon: Search }] as const;
+const NAV_ITEMS = [
+  { to: '/subjects', label: 'Sujetos', icon: Search },
+  { to: '/busqueda-tags', label: 'Búsqueda por tags', icon: Tags },
+] as const;
 
 export function AppShell({ title, children }: { title: string; children: ReactNode }) {
   const { data: user } = useCurrentUser();

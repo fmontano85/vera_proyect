@@ -22,8 +22,15 @@ use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
  * Fillable: se asignan por las Actions dedicadas en App\Actions\SearchResults,
  * no por create()/update() generico - mismo criterio que MentionMatch con
  * sus columnas resuelto_ y propuesta_.
+ *
+ * subject_id nullable (busqueda por tags, sesion posterior a la 3.7): null
+ * significa que vino de una busqueda por palabras clave, no de un subject
+ * en concreto - el matching contra la lista de vigilancia pasa igual por
+ * MatchMentionsJob (ya es agnostico de subject). dias_atras sobreescribe
+ * el default global de ARTICLE_WINDOW_DAYS solo para este resultado,
+ * cuando vino de una busqueda con su propia ventana configurada.
  */
-#[Fillable(['search_run_id', 'subject_id', 'url', 'url_hash', 'titulo', 'snippet', 'medio', 'fecha_brave'])]
+#[Fillable(['search_run_id', 'subject_id', 'url', 'url_hash', 'titulo', 'snippet', 'medio', 'fecha_brave', 'dias_atras'])]
 class SearchResult extends Model
 {
     /** @use HasFactory<SearchResultFactory> */

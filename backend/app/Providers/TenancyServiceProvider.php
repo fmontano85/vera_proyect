@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Listeners\SembrarTagsBusquedaPorDefecto;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Stancl\Tenancy\Events;
@@ -18,9 +19,11 @@ class TenancyServiceProvider extends ServiceProvider
             Events\CreatingTenant::class => [],
             // VERA usa base de datos unica (seccion 3.1 del CLAUDE.md raiz): no se
             // provisiona una BD por tenant, por eso CreateDatabase/MigrateDatabase
-            // quedan deshabilitados. Nada que ejecutar aqui al crear un tenant por
-            // ahora; agregar jobs propios si hace falta preparar algo (R2, etc.).
-            Events\TenantCreated::class => [],
+            // quedan deshabilitados. Sembrar el catalogo de tags de busqueda por
+            // defecto (sesion posterior a la 3.7) si es lo unico que corre aqui.
+            Events\TenantCreated::class => [
+                SembrarTagsBusquedaPorDefecto::class,
+            ],
             Events\SavingTenant::class => [],
             Events\TenantSaved::class => [],
             Events\UpdatingTenant::class => [],

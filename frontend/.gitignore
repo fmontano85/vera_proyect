@@ -16,6 +16,7 @@ dist-ssr
 # generado por @tanstack/router-plugin, no se comitea (seccion 6 del
 # CLAUDE.md raiz: TanStack Router)
 src/routeTree.gen.ts
+.tanstack/
 
 # Editor directories and files
 .vscode/*

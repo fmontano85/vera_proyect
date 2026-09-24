@@ -112,7 +112,7 @@ function SubjectDetailPage() {
 
       <div className="flex flex-col gap-4">
         {listaFiltrada.map((resultado) => (
-          <ResultadoCard key={resultado.id} resultado={resultado} subjectId={id} />
+          <ResultadoCard key={resultado.id} resultado={resultado} queryKey={['subjects', id, 'resultados']} />
         ))}
       </div>
     </AppShell>

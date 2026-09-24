@@ -18,13 +18,33 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <!--
+            APP_ENV y DB_DATABASE en <env> Y <server>, ambos con force="true":
+            docker-compose.yml define estas dos como variables de entorno
+            reales del contenedor (ver servicio "api") para el uso normal de
+            la app. <env force="true"> sobreescribe $_ENV/getenv(), pero
+            Laravel resuelve env() priorizando $_SERVER si ya existe ahi -
+            y $_SERVER solo lo toca el elemento <server>, no <env>. Sin
+            ambos, PHPUnit "fuerza" $_ENV pero Laravel sigue leyendo el
+            valor real del contenedor desde $_SERVER. Esto explica el
+            archivo espurio "backend/vera" documentado en el CLAUDE.md raiz
+            durante varias sesiones: los tests llevaban corriendo contra un
+            SQLite real (DB_DATABASE=vera heredado del contenedor), no en
+            memoria. Confirmado 2026-09-24 con una prueba directa
+            (var_dump de getenv()/$_ENV/$_SERVER/config() dentro de un test
+            real): getenv()/$_ENV ya mostraban ":memory:" con solo <env
+            force>, pero $_SERVER y config() seguian en "vera" hasta
+            agregar tambien <server force>.
+        -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <server name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <server name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

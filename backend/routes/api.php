@@ -5,7 +5,9 @@ declare(strict_types=1);
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\MatchController;
 use App\Http\Controllers\SearchResultController;
+use App\Http\Controllers\SearchTagController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\TagSearchController;
 use Illuminate\Support\Facades\Route;
 
 // throttle:5,1 (OWASP A07 - fuerza bruta): 5 intentos por minuto por IP+email.
@@ -37,4 +39,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('resultados/{resultado}/extraer', [SearchResultController::class, 'extraer']);
     Route::post('resultados/{resultado}/descartar', [SearchResultController::class, 'descartar']);
     Route::post('resultados/{resultado}/captura-manual', [SearchResultController::class, 'capturaManual']);
+
+    // Busqueda por tags (sesion posterior a la 3.7, sin subject).
+    Route::get('tags-busqueda', [SearchTagController::class, 'index']);
+    Route::post('tags-busqueda', [SearchTagController::class, 'store']);
+    Route::post('busquedas-tags', [TagSearchController::class, 'buscar']);
+    Route::get('busquedas-tags/resultados', [TagSearchController::class, 'resultados']);
 });

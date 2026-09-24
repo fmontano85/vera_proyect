@@ -9,6 +9,7 @@ use App\Enums\GapMotivo;
 use App\Models\Article;
 use App\Models\Mention;
 use App\Models\SearchResult;
+use App\Services\Search\VentanaTemporal;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -95,7 +96,7 @@ class FetchArticleJob implements ShouldQueue
 
         $fechaPublicacion = $this->extraerFechaPublicacion($html);
 
-        $ventanaDias = (int) config('vera.article_window_days');
+        $ventanaDias = VentanaTemporal::diasPara($searchResult);
         if ($fechaPublicacion !== null && $fechaPublicacion->lt(CarbonImmutable::now()->subDays($ventanaDias))) {
             $this->marcarGap($searchResult, GapMotivo::FueraDeVentana, $response->status());
 

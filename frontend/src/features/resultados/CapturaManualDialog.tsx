@@ -1,3 +1,4 @@
+import type { QueryKey } from '@tanstack/react-query';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,9 +22,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useSubjects } from '@/features/consulta/useSubjects';
 import { useCapturaManual } from '@/features/resultados/useSearchResults';
 import { ApiError } from '@/lib/api';
-import type { RolMencion } from '@/types/api';
+import type { RolMencion, SearchResult } from '@/types/api';
 
 const ESTADO_RESOLUCION_OPCIONES = [
   { value: 'confirmado', label: 'Confirmado' },
@@ -40,19 +42,25 @@ const ROL_OPCIONES: { value: RolMencion; label: string }[] = [
 ];
 
 interface CapturaManualDialogProps {
-  subjectId: number;
-  resultadoId: number;
+  resultado: SearchResult;
+  queryKey: QueryKey;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+/** Si el resultado no tiene subject propio (vino de una busqueda por
+ * tags, seccion posterior a la 3.7), el formulario tiene que preguntar a
+ * que persona vigilada se le atribuye - sin eso no hay a quien resolverle
+ * el match (CapturaManualRequest lo exige del lado del backend). */
 export function CapturaManualDialog({
-  subjectId,
-  resultadoId,
+  resultado,
+  queryKey,
   open,
   onOpenChange,
 }: CapturaManualDialogProps) {
-  const capturar = useCapturaManual(subjectId);
+  const capturar = useCapturaManual(queryKey);
+  const necesitaElegirSubject = resultado.subject_id === null;
+  const { data: subjects } = useSubjects();
 
   const [nombre, setNombre] = useState('');
   const [rol, setRol] = useState<RolMencion | ''>('');
@@ -63,6 +71,7 @@ export function CapturaManualDialog({
   const [estadoResolucion, setEstadoResolucion] = useState<
     (typeof ESTADO_RESOLUCION_OPCIONES)[number]['value'] | ''
   >('');
+  const [subjectId, setSubjectId] = useState<string>('');
   const [pdf, setPdf] = useState<File | null>(null);
 
   function limpiar() {
@@ -73,6 +82,7 @@ export function CapturaManualDialog({
     setFechaHecho('');
     setResumen('');
     setEstadoResolucion('');
+    setSubjectId('');
     setPdf(null);
   }
 
@@ -88,14 +98,19 @@ export function CapturaManualDialog({
   }
 
   const formularioValido =
-    nombre.trim() !== '' && rol !== '' && delitos.length > 0 && estadoResolucion !== '' && pdf !== null;
+    nombre.trim() !== '' &&
+    rol !== '' &&
+    delitos.length > 0 &&
+    estadoResolucion !== '' &&
+    pdf !== null &&
+    (!necesitaElegirSubject || subjectId !== '');
 
   function enviar() {
     if (!formularioValido || !rol || !estadoResolucion || !pdf) return;
 
     capturar.mutate(
       {
-        resultadoId,
+        resultadoId: resultado.id,
         datos: {
           nombre_como_aparece: nombre.trim(),
           rol,
@@ -103,6 +118,7 @@ export function CapturaManualDialog({
           fecha_hecho: fechaHecho || undefined,
           resumen: resumen.trim() || undefined,
           estado_resolucion: estadoResolucion,
+          subject_id: subjectId ? Number(subjectId) : undefined,
           pdf,
         },
       },
@@ -214,6 +230,24 @@ export function CapturaManualDialog({
             <Label htmlFor="resumen">Resumen (opcional)</Label>
             <Textarea id="resumen" value={resumen} onChange={(e) => setResumen(e.target.value)} />
           </div>
+
+          {necesitaElegirSubject && (
+            <div className="grid gap-1.5">
+              <Label>Persona vigilada a la que se atribuye el hallazgo</Label>
+              <Select value={subjectId} onValueChange={setSubjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Elegir de la lista de vigilancia" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects?.data.map((subject) => (
+                    <SelectItem key={subject.id} value={String(subject.id)}>
+                      {subject.nombre_canonico}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="grid gap-1.5">
             <Label>Resolución</Label>

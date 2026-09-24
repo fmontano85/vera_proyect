@@ -26,13 +26,22 @@ use App\Models\Subject;
  * Tambien solo se engancha en 'creating': si subject_id de un registro ya
  * existente cambiara via update(), tenant_id no se re-deriva. Hoy ningun
  * codigo hace eso, asi que no se protege contra un caso que no existe.
+ *
+ * subject_id nullable (busqueda por tags, sesion 2026-09-24 posterior a la
+ * 3.7): cuando es null no hay subject del cual derivar nada - se deja que
+ * BelongsToTenant asigne tenant_id desde el tenant ambiente en tenancy()
+ * como haria de por si sin este trait (el caller, ej. RunTagSearchJob,
+ * es responsable de tener tenancy() inicializada, igual que cualquier
+ * otro Job de la seccion 3.4 - ver seccion 6 del CLAUDE.md raiz).
  */
 trait DerivesTenantFromSubject
 {
     protected static function bootDerivesTenantFromSubject(): void
     {
         static::creating(function (self $model) {
-            $model->tenant_id = Subject::findOrFail($model->subject_id)->tenant_id;
+            if ($model->subject_id !== null) {
+                $model->tenant_id = Subject::findOrFail($model->subject_id)->tenant_id;
+            }
         });
     }
 }

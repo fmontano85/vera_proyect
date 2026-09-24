@@ -1,3 +1,4 @@
+import type { QueryKey } from '@tanstack/react-query';
 import { ExternalLink, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -22,16 +23,20 @@ import { CapturaManualDialog } from '@/features/resultados/CapturaManualDialog';
 import { ApiError } from '@/lib/api';
 import type { EstadoMatch, Mention, SearchResult } from '@/types/api';
 
+/** queryKey en vez de un subjectId fijo: esta tarjeta se reutiliza tal
+ * cual tanto en /subjects/$id (resultados de un subject) como en la
+ * pantalla de busqueda por tags (resultados sin subject) - lo unico que
+ * cambia entre ambas es que query hay que invalidar tras una accion. */
 export function ResultadoCard({
   resultado,
-  subjectId,
+  queryKey,
 }: {
   resultado: SearchResult;
-  subjectId: number;
+  queryKey: QueryKey;
 }) {
   const { data: user } = useCurrentUser();
-  const extraer = useExtraer(subjectId);
-  const descartar = useDescartar(subjectId);
+  const extraer = useExtraer(queryKey);
+  const descartar = useDescartar(queryKey);
   const [capturaAbierta, setCapturaAbierta] = useState(false);
 
   function handleExtraer() {
@@ -123,13 +128,13 @@ export function ResultadoCard({
 
         {resultado.estado === 'extraido' &&
           resultado.mentions?.map((mention) => (
-            <MentionCard key={mention.id} mention={mention} subjectId={subjectId} />
+            <MentionCard key={mention.id} mention={mention} queryKey={queryKey} />
           ))}
       </CardContent>
 
       <CapturaManualDialog
-        subjectId={subjectId}
-        resultadoId={resultado.id}
+        resultado={resultado}
+        queryKey={queryKey}
         open={capturaAbierta}
         onOpenChange={setCapturaAbierta}
       />
@@ -137,10 +142,10 @@ export function ResultadoCard({
   );
 }
 
-function MentionCard({ mention, subjectId }: { mention: Mention; subjectId: number }) {
+function MentionCard({ mention, queryKey }: { mention: Mention; queryKey: QueryKey }) {
   const { data: user } = useCurrentUser();
-  const proponer = useProponer(subjectId);
-  const resolver = useResolver(subjectId);
+  const proponer = useProponer(queryKey);
+  const resolver = useResolver(queryKey);
   const [seleccion, setSeleccion] = useState<Exclude<EstadoMatch, 'pendiente'> | ''>('');
 
   const match = mention.match;

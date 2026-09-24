@@ -90,7 +90,7 @@ export type GapMotivo =
 export interface SearchResult {
   id: number;
   search_run_id: number;
-  subject_id: number;
+  subject_id: number | null;
   url: string;
   url_hash: string;
   titulo: string | null;
@@ -107,6 +107,13 @@ export interface SearchResult {
   created_at: string;
   article?: Article | null;
   mentions?: Mention[];
+}
+
+/** Busqueda por tags (sesion posterior a la 3.7) - catalogo por tenant. */
+export interface SearchTag {
+  id: number;
+  nombre: string;
+  activo: boolean;
 }
 
 /** Forma exacta del paginate() default de Laravel (sin API Resource). */

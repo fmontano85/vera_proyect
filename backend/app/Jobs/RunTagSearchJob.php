@@ -7,7 +7,6 @@ namespace App\Jobs;
 use App\Models\SearchResult;
 use App\Models\SearchRun;
 use App\Models\Source;
-use App\Models\Subject;
 use App\Services\Search\RestriccionDeDominios;
 use App\Services\Search\VentanaTemporal;
 use App\Sources\BraveSearchAdapter;
@@ -21,39 +20,42 @@ use Illuminate\Queue\SerializesModels;
 use InvalidArgumentException;
 
 /**
- * Por subject y source (seccion 3.4): construye la query con el nombre
- * canonico + aliases, llama al adaptador de la fuente, persiste el
- * search_run y un search_result por cada resultado (seccion 3.7, flujo
- * bajo demanda 2026-09-24). YA NO encola FetchArticleJob directo - eso
- * solo pasa cuando el analista lo pide (POST /resultados/{id}/extraer,
- * App\Actions\SearchResults\ExtraerResultado).
+ * Busqueda por tags (sesion posterior a la 3.7, 2026-09-24): en vez de
+ * nombre+aliases de un subject, construye la query con los tags elegidos
+ * por el analista (delitos: hurto, estafa, etc.). subject_id queda null
+ * en el search_run/search_results resultantes - el matching contra la
+ * lista de vigilancia lo hace igual MatchMentionsJob (ya es agnostico de
+ * subject, corre por tenant completo). Mismo patron de idempotencia y
+ * dominios que RunSubjectSearchJob.
  */
-class RunSubjectSearchJob implements ShouldQueue
+class RunTagSearchJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * @param  list<string>  $tags  nombres de tags ya validados contra el catalogo del tenant (App\Actions\TagSearches\IniciarBusquedaPorTags)
+     */
     public function __construct(
-        private readonly int $subjectId,
+        private readonly array $tags,
         private readonly int $sourceId,
+        private readonly ?int $diasAtras = null,
     ) {
         $this->onQueue('search');
     }
 
     public function handle(): SearchRun
     {
-        $subject = Subject::with('aliases')->findOrFail($this->subjectId);
         $source = Source::findOrFail($this->sourceId);
+        $tagsOrdenados = collect($this->tags)->sort()->values()->all();
 
         /**
-         * Idempotencia (seccion 7: "cada job debe ser idempotente y
-         * reintentable"): si Horizon reintenta este job despues de que ya
-         * corrio hoy para este subject+source (ej. el worker murio entre
-         * el create() y el ultimo dispatch de FetchArticleJob), no se
-         * vuelve a gastar cuota de Google CSE ni a duplicar el search_run
-         * - se reusa el que ya existe.
+         * Idempotencia (seccion 7): mismo criterio que RunSubjectSearchJob,
+         * pero la clave es la combinacion exacta de tags (no un subject) -
+         * BelongsToTenant ya filtra por el tenant ambiente.
          */
-        $existente = SearchRun::where('subject_id', $subject->id)
+        $existente = SearchRun::whereNull('subject_id')
             ->where('source_id', $source->id)
+            ->where('tags', json_encode($tagsOrdenados))
             ->whereDate('created_at', today())
             ->first();
 
@@ -61,35 +63,37 @@ class RunSubjectSearchJob implements ShouldQueue
             return $existente;
         }
 
-        $query = $this->construirQuery($subject, $source);
+        $query = $this->construirQuery($tagsOrdenados, $source);
         $resultado = $this->adapterFor($source)->buscar($query);
 
         $searchRun = SearchRun::create([
-            'subject_id' => $subject->id,
             'source_id' => $source->id,
             'query' => $query,
+            'tags' => $tagsOrdenados,
+            'dias_atras' => $this->diasAtras,
             'resultados' => $resultado['resultados'],
             'costo' => $resultado['costo'],
         ]);
 
         foreach ($resultado['resultados'] as $item) {
-            $this->guardarSearchResult($subject, $searchRun, $item);
+            $this->guardarSearchResult($searchRun, $item);
         }
 
         return $searchRun;
     }
 
     /**
-     * firstOrCreate por (subject_id, url_hash): si la misma URL ya salio
-     * en una busqueda anterior para este subject (otro dia), no se
-     * duplica la tarjeta ni se le resetea el estado si el analista ya la
-     * proceso - solo se crea si es realmente nueva para este subject.
+     * firstOrCreate por (subject_id=null, url_hash): BelongsToTenant ya
+     * scopea la busqueda/creacion al tenant ambiente (ver migracion
+     * add_busqueda_por_tags_a_search_runs_y_results: unique
+     * (tenant_id, subject_id, url_hash)), asi que dos busquedas por tags
+     * del mismo tenant no duplican la misma URL.
      */
-    private function guardarSearchResult(Subject $subject, SearchRun $searchRun, array $item): void
+    private function guardarSearchResult(SearchRun $searchRun, array $item): void
     {
         $resultado = SearchResult::firstOrCreate(
             [
-                'subject_id' => $subject->id,
+                'subject_id' => null,
                 'url_hash' => hash('sha256', $item['url']),
             ],
             [
@@ -99,32 +103,28 @@ class RunSubjectSearchJob implements ShouldQueue
                 'snippet' => $item['descripcion'],
                 'medio' => $item['medio'],
                 'fecha_brave' => $item['fecha'],
+                'dias_atras' => $this->diasAtras,
             ],
         );
 
         VentanaTemporal::marcarSiFueraDeVentanaPorFechaBrave($resultado);
     }
 
-    private function construirQuery(Subject $subject, Source $source): string
+    /**
+     * @param  list<string>  $tags
+     */
+    private function construirQuery(array $tags, Source $source): string
     {
-        $nombres = collect([$subject->nombre_canonico])
-            ->merge($subject->aliases->pluck('nombre'))
-            ->unique()
-            ->map(fn (string $nombre) => "\"{$nombre}\"");
-
+        $tagsQuery = collect($tags)->map(fn (string $tag) => "\"{$tag}\"");
         $dominios = RestriccionDeDominios::sitesPara($source);
 
-        return '('.$nombres->implode(' OR ').') ('.$dominios->implode(' OR ').')';
+        return '('.$tagsQuery->implode(' OR ').') ('.$dominios->implode(' OR ').')';
     }
 
     private function adapterFor(Source $source): SourceAdapterInterface
     {
         return match ($source->tipo) {
             'brave' => app(BraveSearchAdapter::class),
-            // Google CSE cerrada a clientes nuevos desde 2025 y se apaga
-            // por completo el 1 de enero de 2027 (ademas del bloqueo de
-            // facturacion sin resolver) - el codigo se queda por si se
-            // retoma antes de esa fecha, pero 'brave' es la fuente activa.
             'cse' => app(GoogleCseAdapter::class),
             default => throw new InvalidArgumentException(
                 "Adaptador no implementado todavia para fuentes de tipo '{$source->tipo}'."

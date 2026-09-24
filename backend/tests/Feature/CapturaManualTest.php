@@ -144,3 +144,76 @@ it('exige al menos un delito', function () {
         'pdf' => UploadedFile::fake()->create('evidencia.pdf', 100, 'application/pdf'),
     ])->assertStatus(422)->assertJsonValidationErrors('delitos');
 });
+
+/**
+ * Busqueda por tags (sesion posterior a la 3.7): un resultado sin subject
+ * no tiene a quien atribuirle el match capturado a mano - el formulario
+ * debe traer explicitamente subject_id.
+ */
+function resultadoDeBusquedaPorTagsEnGap(Tenant $tenant): SearchResult
+{
+    tenancy()->initialize($tenant);
+    $searchRun = \App\Models\SearchRun::factory()->create(['subject_id' => null, 'tags' => ['hurto']]);
+    $resultado = SearchResult::factory()->create(['subject_id' => null, 'search_run_id' => $searchRun->id]);
+    $resultado->forceFill(['estado' => EstadoSearchResult::Gap, 'gap_motivo' => GapMotivo::Http403])->save();
+    tenancy()->end();
+
+    return $resultado;
+}
+
+it('responde 422 si el resultado no tiene subject (busqueda por tags) y no se indica a cual atribuirlo', function () {
+    $tenant = Tenant::create();
+    $user = crearUsuarioCapturaConRol($tenant, 'admin');
+    $resultado = resultadoDeBusquedaPorTagsEnGap($tenant);
+
+    $this->actingAs($user)->postJson("/api/resultados/{$resultado->id}/captura-manual", [
+        'nombre_como_aparece' => 'Juan Perez',
+        'rol' => 'condenado',
+        'delitos' => ['hurto agravado'],
+        'estado_resolucion' => 'confirmado',
+        'pdf' => UploadedFile::fake()->create('evidencia.pdf', 100, 'application/pdf'),
+    ])->assertStatus(422)->assertJsonValidationErrors('subject_id');
+});
+
+it('captura manual de un resultado sin subject (busqueda por tags) con subject_id valido queda resuelta para ese subject', function () {
+    $tenant = Tenant::create();
+    $user = crearUsuarioCapturaConRol($tenant, 'admin');
+    $resultado = resultadoDeBusquedaPorTagsEnGap($tenant);
+
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create();
+    tenancy()->end();
+
+    $this->actingAs($user)->post("/api/resultados/{$resultado->id}/captura-manual", [
+        'nombre_como_aparece' => 'Juan Perez',
+        'rol' => 'condenado',
+        'delitos' => ['hurto agravado'],
+        'estado_resolucion' => 'confirmado',
+        'subject_id' => $subject->id,
+        'pdf' => UploadedFile::fake()->create('evidencia.pdf', 100, 'application/pdf'),
+    ])->assertCreated();
+
+    tenancy()->initialize($tenant);
+    expect(MentionMatch::sole()->subject_id)->toBe($subject->id);
+    tenancy()->end();
+});
+
+it('responde 422 si el subject_id indicado pertenece a otro tenant', function () {
+    $tenant = Tenant::create();
+    $user = crearUsuarioCapturaConRol($tenant, 'admin');
+    $resultado = resultadoDeBusquedaPorTagsEnGap($tenant);
+
+    $otroTenant = Tenant::create();
+    tenancy()->initialize($otroTenant);
+    $subjectDeOtroTenant = Subject::factory()->create();
+    tenancy()->end();
+
+    $this->actingAs($user)->postJson("/api/resultados/{$resultado->id}/captura-manual", [
+        'nombre_como_aparece' => 'Juan Perez',
+        'rol' => 'condenado',
+        'delitos' => ['hurto agravado'],
+        'estado_resolucion' => 'confirmado',
+        'subject_id' => $subjectDeOtroTenant->id,
+        'pdf' => UploadedFile::fake()->create('evidencia.pdf', 100, 'application/pdf'),
+    ])->assertStatus(422)->assertJsonValidationErrors('subject_id');
+});

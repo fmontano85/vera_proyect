@@ -178,6 +178,44 @@ it('rutea una source tipo brave a BraveSearchAdapter (fuente activa por default 
     tenancy()->end();
 });
 
+it('marca GAP fuera_de_ventana de una vez si Brave ya trae una fecha vieja, sin esperar a que el analista pida extraer', function () {
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create(['nombre_canonico' => 'Juan Perez']);
+    tenancy()->end();
+
+    $source = Source::factory()->create(['tipo' => 'brave']);
+
+    Http::fake(['api.search.brave.com/*' => Http::response([
+        'web' => ['results' => [
+            // Bug real reportado por el usuario (2026-09-24, /subjects/5):
+            // Brave devuelve noticias de hace anos y se quedaban en
+            // 'nuevo' indefinidamente porque el unico chequeo de ventana
+            // vivia en FetchArticleJob, que solo corre si alguien pide
+            // extraer ese resultado en concreto.
+            ['url' => 'https://medio.example/nota-vieja', 'title' => 'Nota vieja', 'page_age' => '2021-03-26T00:00:00'],
+            ['url' => 'https://medio.example/nota-reciente', 'title' => 'Nota reciente', 'page_age' => Carbon\Carbon::now()->subDays(2)->toIso8601String()],
+            ['url' => 'https://medio.example/nota-sin-fecha', 'title' => 'Nota sin fecha'],
+        ]],
+    ], 200)]);
+
+    (new RunSubjectSearchJob($subject->id, $source->id))->handle();
+
+    tenancy()->initialize($tenant);
+    $vieja = SearchResult::where('url', 'https://medio.example/nota-vieja')->sole();
+    $reciente = SearchResult::where('url', 'https://medio.example/nota-reciente')->sole();
+    $sinFecha = SearchResult::where('url', 'https://medio.example/nota-sin-fecha')->sole();
+
+    expect($vieja->estado)->toBe(EstadoSearchResult::Gap)
+        ->and($vieja->gap_motivo)->toBe(\App\Enums\GapMotivo::FueraDeVentana)
+        ->and($reciente->estado)->toBe(EstadoSearchResult::Nuevo)
+        // Sin fecha de Brave no se puede saber si esta fuera de ventana -
+        // se deja pasar, el chequeo real (con la fecha del articulo) lo
+        // hace FetchArticleJob si el analista pide extraerlo.
+        ->and($sinFecha->estado)->toBe(EstadoSearchResult::Nuevo);
+    tenancy()->end();
+});
+
 it('lanza excepcion para una fuente con tipo de adaptador no implementado', function () {
     $tenant = Tenant::create();
     tenancy()->initialize($tenant);

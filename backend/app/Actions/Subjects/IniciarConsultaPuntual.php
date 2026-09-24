@@ -12,8 +12,9 @@ use RuntimeException;
 /**
  * Consulta puntual (seccion 1.1 y 5 "Fase 1" del CLAUDE.md raiz): dispara el
  * pipeline completo (seccion 3.4) para un subject contra todas las fuentes
- * activas que ya tienen adaptador implementado. Hoy eso es solo 'cse'
- * (GoogleCseAdapter) - RunSubjectSearchJob::adapterFor() lanza
+ * activas que ya tienen adaptador implementado. Desde 2026-09-24 eso es
+ * 'brave' (BraveSearchAdapter, reemplaza a Google CSE - ver CLAUDE.md
+ * raiz, Estatus de sesion). RunSubjectSearchJob::adapterFor() lanza
  * InvalidArgumentException para 'rss'/'oficial' porque esos adaptadores
  * todavia no existen (ver "Pendiente" del CLAUDE.md), asi que filtrar aqui
  * evita encolar un job que solo va a fallar.
@@ -27,12 +28,12 @@ class IniciarConsultaPuntual
     {
         $sources = Source::query()
             ->where('activo', true)
-            ->where('tipo', 'cse')
+            ->where('tipo', 'brave')
             ->pluck('id');
 
         if ($sources->isEmpty()) {
             throw new RuntimeException(
-                'No hay fuentes activas de tipo cse configuradas. Crea una Source con tipo=cse antes de ejecutar una consulta puntual.'
+                'No hay fuentes activas de tipo brave configuradas. Crea una Source con tipo=brave antes de ejecutar una consulta puntual.'
             );
         }
 

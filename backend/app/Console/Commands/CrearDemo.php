@@ -15,14 +15,14 @@ use Stancl\Tenancy\Database\Models\Tenant;
  * Bootstrap de datos de desarrollo para probar el pipeline de la seccion
  * 3.4 por HTTP sin frontend todavia (Fase 1 en construccion): crea un
  * tenant, un usuario oficial_cumplimiento con token Sanctum, una Source
- * tipo=cse activa y un Subject de prueba, e imprime los comandos curl
+ * tipo=brave activa y un Subject de prueba, e imprime los comandos curl
  * listos para copiar y pegar. No usar en produccion.
  */
 class CrearDemo extends Command
 {
     protected $signature = 'vera:demo {nombre_sujeto=Juan Perez}';
 
-    protected $description = 'Crea tenant + usuario + token + source cse + subject de prueba para probar el pipeline por HTTP';
+    protected $description = 'Crea tenant + usuario + token + source brave + subject de prueba para probar el pipeline por HTTP';
 
     public function handle(): int
     {
@@ -46,7 +46,7 @@ class CrearDemo extends Command
         $token = $user->createToken('demo')->plainTextToken;
 
         $source = Source::firstOrCreate(
-            ['nombre' => 'Medios salvadorenses (CSE)', 'tipo' => 'cse'],
+            ['nombre' => 'Medios salvadorenses (Brave Search)', 'tipo' => 'brave'],
             ['config' => [], 'activo' => true]
         );
 
@@ -62,7 +62,7 @@ class CrearDemo extends Command
         $this->line("  tenant_id:  {$tenant->id}");
         $this->line("  usuario:    {$user->email}");
         $this->line("  token:      {$token}");
-        $this->line("  source_id:  {$source->id} (cse, activo)");
+        $this->line("  source_id:  {$source->id} (brave, activo)");
         $this->line("  subject_id: {$subject->id} ({$subject->nombre_canonico})");
 
         $base = config('app.url');

@@ -20,10 +20,13 @@ it('extrae las urls de una respuesta real de Google CSE', function () {
 
     $resultado = (new GoogleCseAdapter())->buscar('"Juan Perez"');
 
-    expect($resultado['urls'])->toBe([
+    expect(array_column($resultado['resultados'], 'url'))->toBe([
         'https://laprensagrafica.com/nota-1',
         'https://elsalvador.com/nota-2',
-    ]);
+    ])
+        ->and($resultado['resultados'][0]['titulo'])->toBe('Nota 1')
+        ->and($resultado['resultados'][0]['descripcion'])->toBe('...')
+        ->and($resultado['resultados'][0]['medio'])->toBe('laprensagrafica.com');
 });
 
 it('devuelve una lista vacia si Google CSE no encuentra resultados', function () {
@@ -31,7 +34,7 @@ it('devuelve una lista vacia si Google CSE no encuentra resultados', function ()
 
     $resultado = (new GoogleCseAdapter())->buscar('nombre sin coincidencias');
 
-    expect($resultado['urls'])->toBe([]);
+    expect($resultado['resultados'])->toBe([]);
 });
 
 it('nunca llama a Google una vez alcanzada la cuota diaria configurada', function () {

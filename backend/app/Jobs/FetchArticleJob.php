@@ -4,53 +4,102 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\EstadoSearchResult;
+use App\Enums\GapMotivo;
 use App\Models\Article;
+use App\Models\Mention;
+use App\Models\SearchResult;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\DomCrawler\Crawler;
+use Throwable;
 
 /**
  * articles es global (sin tenant_id, ver seccion 3.1 del CLAUDE.md raiz).
- * Alcance de esta primera version (Fase 1, consulta puntual): un articulo
- * se descarga UNA vez por url; no hay re-captura/versionado todavia (eso
- * es Fase 2, monitoreo continuo) - si la url ya existe, no hace nada.
+ *
+ * Flujo bajo demanda (seccion 3.7, 2026-09-24): solo se encola por accion
+ * del analista (App\Actions\SearchResults\ExtraerResultado), no automatico.
+ * Recibe un search_result_id, no una URL suelta. Un fallo esperado (403,
+ * timeout, contenido vacio, no-HTML, fuera de ventana) marca el
+ * search_result como GAP con su motivo y TERMINA SIN EXCEPCION - un GAP
+ * es un resultado valido que admite captura manual, no un fallo de job
+ * que Horizon deba reintentar.
  */
 class FetchArticleJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct(private readonly string $url)
+    public function __construct(private readonly int $searchResultId)
     {
         $this->onQueue('fetch');
     }
 
-    public function handle(): ?Article
+    public function handle(): void
     {
-        $urlHash = hash('sha256', $this->url);
+        $searchResult = SearchResult::findOrFail($this->searchResultId);
+        $urlHash = hash('sha256', $searchResult->url);
 
-        if (Article::where('url_hash', $urlHash)->exists()) {
-            return null;
+        // Articles es global y deduplicado por url (seccion 3.1) - si
+        // otro subject (o esta misma busqueda en otro dia) ya lo bajo y
+        // extrajo, no se vuelve a descargar ni a pagar otra extraccion.
+        $existente = Article::where('url_hash', $urlHash)->first();
+        if ($existente !== null) {
+            $this->reutilizarArticuloExistente($searchResult, $existente);
+
+            return;
         }
 
-        // timeout/retry moderados: solo hay 3 workers de Horizon en total
-        // (seccion 2) y 'fetch' no es la cola de mayor prioridad.
-        $response = Http::timeout(15)->retry(2, 500)->get($this->url)->throw();
+        try {
+            // timeout/retry moderados: solo hay 3 workers de Horizon en
+            // total (seccion 2) y 'fetch' no es la cola de mayor prioridad.
+            $response = Http::timeout(15)->retry(2, 500)->get($searchResult->url)->throw();
+        } catch (RequestException $e) {
+            $status = $e->response->status();
+            $this->marcarGap($searchResult, $status === 403 ? GapMotivo::Http403 : GapMotivo::HttpError, $status);
+
+            return;
+        } catch (ConnectionException) {
+            $this->marcarGap($searchResult, GapMotivo::Timeout);
+
+            return;
+        }
+
+        $contentType = (string) $response->header('Content-Type');
+        if ($contentType !== '' && ! str_contains($contentType, 'html')) {
+            // Ej. un PDF que Brave a veces devuelve mezclado con noticias.
+            $this->marcarGap($searchResult, GapMotivo::NoHtml, $response->status());
+
+            return;
+        }
+
         $html = $response->body();
+        // strip_tags() NO borra el contenido de <script>/<style>, solo la
+        // etiqueta - una pagina que es puro <script> pasaria como "con
+        // contenido" sin este paso primero (mismo patron que
+        // ExtractEntitiesJob::textoLimpio()).
+        $textoVisible = strip_tags((string) preg_replace('#<(script|style)\b[^>]*>.*?</\1>#is', ' ', $html));
+        if (trim($textoVisible) === '') {
+            $this->marcarGap($searchResult, GapMotivo::SinContenido, $response->status());
+
+            return;
+        }
 
         $fechaPublicacion = $this->extraerFechaPublicacion($html);
 
         $ventanaDias = (int) config('vera.article_window_days');
         if ($fechaPublicacion !== null && $fechaPublicacion->lt(CarbonImmutable::now()->subDays($ventanaDias))) {
-            // Fuera de la ventana configurada (seccion 3.4): se descarta,
-            // no se persiste evidencia de algo que no se va a usar.
-            return null;
+            $this->marcarGap($searchResult, GapMotivo::FueraDeVentana, $response->status());
+
+            return;
         }
 
         $hashContenido = hash('sha256', $html);
@@ -59,28 +108,75 @@ class FetchArticleJob implements ShouldQueue
 
         try {
             $article = Article::create([
-                'url' => $this->url,
-                'titulo' => $this->extraerTitulo($html),
-                'medio' => parse_url($this->url, PHP_URL_HOST) ?: null,
+                'url' => $searchResult->url,
+                'titulo' => $this->extraerTitulo($html) ?? $searchResult->titulo,
+                'medio' => parse_url($searchResult->url, PHP_URL_HOST) ?: null,
                 'fecha_publicacion' => $fechaPublicacion,
                 'hash_contenido' => $hashContenido,
                 'evidence_path' => $evidencePath,
                 'estado_extraccion' => 'pendiente',
             ]);
-
-            ExtractEntitiesJob::dispatch($article->id);
-
-            return $article;
         } catch (UniqueConstraintViolationException) {
             /**
              * El exists() de arriba no es atomico: dos dispatches para la
              * misma url en workers distintos pueden pasarlo los dos antes
-             * de que cualquiera inserte (TOCTOU). En vez de tronar con una
-             * QueryException sin manejar, se trata como el no-op que
-             * deberia ser - la url ya quedo cubierta por el otro worker.
+             * de que cualquiera inserte (TOCTOU). Se trata como el caso de
+             * "articulo ya existente", no como un fallo.
              */
-            return null;
+            $this->reutilizarArticuloExistente($searchResult, Article::where('url_hash', $urlHash)->firstOrFail());
+
+            return;
         }
+
+        $searchResult->forceFill(['article_id' => $article->id])->save();
+
+        ExtractEntitiesJob::dispatch($article->id, $searchResult->id);
+    }
+
+    /**
+     * El articulo ya existe (de otro subject, o de una busqueda anterior
+     * de este mismo). Si ya tiene mentions extraidas, no hace falta
+     * volver a pagar Anthropic - solo hace falta re-chequear el match
+     * contra ESTE subject (MatchMentionsJob es idempotente por
+     * mention_id+subject_id via el unique de 'matches', asi que
+     * redespacharlo no duplica nada).
+     */
+    private function reutilizarArticuloExistente(SearchResult $searchResult, Article $article): void
+    {
+        $searchResult->forceFill(['article_id' => $article->id])->save();
+
+        if ($article->estado_extraccion !== 'completado') {
+            // Extraccion todavia en curso o fallida - se deja que termine
+            // (o se reintenta) por su propio camino; caso raro (dos
+            // subjects distintos pidiendo "extraer" sobre la misma URL
+            // nueva casi al mismo tiempo), no se optimiza mas por ahora.
+            ExtractEntitiesJob::dispatch($article->id, $searchResult->id);
+
+            return;
+        }
+
+        $mentions = Mention::where('article_id', $article->id)->get();
+
+        if ($mentions->isEmpty()) {
+            $searchResult->forceFill(['estado' => EstadoSearchResult::SinMenciones])->save();
+
+            return;
+        }
+
+        $searchResult->forceFill(['estado' => EstadoSearchResult::Extraido])->save();
+
+        foreach ($mentions as $mention) {
+            MatchMentionsJob::dispatch($mention->id);
+        }
+    }
+
+    private function marcarGap(SearchResult $searchResult, GapMotivo $motivo, ?int $httpStatus = null): void
+    {
+        $searchResult->forceFill([
+            'estado' => EstadoSearchResult::Gap,
+            'gap_motivo' => $motivo,
+            'http_status' => $httpStatus,
+        ])->save();
     }
 
     /**
@@ -123,7 +219,7 @@ class FetchArticleJob implements ShouldQueue
     {
         try {
             return CarbonImmutable::parse($value);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }

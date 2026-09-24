@@ -16,11 +16,20 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Strict (seccion 2 del CLAUDE.md raiz: "TypeScript strict") */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Alias de imports (seccion shadcn/ui) */
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

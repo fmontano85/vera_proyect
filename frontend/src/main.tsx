@@ -1,10 +1,32 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createRouter, RouterProvider } from '@tanstack/react-router';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import './index.css';
+import { routeTree } from './routeTree.gen';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // 401 no se reintenta (invitado real, no una falla de red).
+      retry: (failureCount, error) =>
+        (error as { status?: number })?.status !== 401 && failureCount < 2,
+    },
+  },
+});
+
+const router = createRouter({ routeTree, context: { queryClient } });
+
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: typeof router;
+  }
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   </StrictMode>,
-)
+);

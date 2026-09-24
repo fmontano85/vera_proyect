@@ -1,111 +1,160 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Paleta y tokens: frontend/design-system/MASTER.md.
+ * Inspirados en Paper Dashboard 2 de Creative Tim (paper-dashboard-master/
+ * en la raiz del repo, solo referencia visual) traducidos a shadcn/ui.
+ * Colores semanticos de dominio (nivel_riesgo, matches.estado) documentados
+ * ahi tambien - "confirmado" es rojo (mal hallazgo), no verde.
+ */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --radius: 0.625rem;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --background: #f4f3ef;
+  --foreground: #2c2c2c;
+  --card: #ffffff;
+  --card-foreground: #2c2c2c;
+  --popover: #ffffff;
+  --popover-foreground: #2c2c2c;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --primary: #2fa9ac;
+  --primary-foreground: #ffffff;
+  --secondary: #3aa6c2;
+  --secondary-foreground: #ffffff;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+  --muted: #e9e7e0;
+  --muted-foreground: #66615b;
+  --accent: #f1eae0;
+  --accent-foreground: #2c2c2c;
+
+  --destructive: #d9532e;
+  --destructive-foreground: #ffffff;
+  --success: #4faf7a;
+  --success-foreground: #ffffff;
+  --warning: #d89a2e;
+  --warning-foreground: #2c2c2c;
+  --gap: #8a6d3b;
+  --gap-foreground: #ffffff;
+
+  --border: #dddddd;
+  --input: #dddddd;
+  --ring: #2fa9ac;
+
+  --sidebar: #1e1f26;
+  --sidebar-foreground: #e7e7e5;
+  --sidebar-primary: #2fa9ac;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2b34;
+  --sidebar-accent-foreground: #e7e7e5;
+  --sidebar-border: #2a2b34;
+  --sidebar-ring: #2fa9ac;
+
+  --font-sans:
+    'Montserrat', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.dark {
+  --background: #1a1a1a;
+  --foreground: #e9e7e0;
+  --card: #232323;
+  --card-foreground: #e9e7e0;
+  --popover: #232323;
+  --popover-foreground: #e9e7e0;
+
+  --primary: #4fc3c6;
+  --primary-foreground: #101010;
+  --secondary: #5cc2dd;
+  --secondary-foreground: #101010;
+
+  --muted: #2c2c2c;
+  --muted-foreground: #a49e93;
+  --accent: #333230;
+  --accent-foreground: #e9e7e0;
+
+  --destructive: #e77354;
+  --destructive-foreground: #101010;
+  --success: #6bd098;
+  --success-foreground: #101010;
+  --warning: #fbc658;
+  --warning-foreground: #101010;
+  --gap: #c99a53;
+  --gap-foreground: #101010;
+
+  --border: #3a3a3a;
+  --input: #3a3a3a;
+  --ring: #4fc3c6;
+
+  --sidebar: #101014;
+  --sidebar-foreground: #e7e7e5;
+  --sidebar-primary: #4fc3c6;
+  --sidebar-primary-foreground: #101010;
+  --sidebar-accent: #1c1d24;
+  --sidebar-accent-foreground: #e7e7e5;
+  --sidebar-border: #1c1d24;
+  --sidebar-ring: #4fc3c6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-gap: var(--gap);
+  --color-gap-foreground: var(--gap-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-sans);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  body {
+    @apply bg-background text-foreground font-sans;
   }
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  /* seccion "Touch & Interaction" del skill ui-ux-pro-max: cursor-pointer
+     en todo elemento clickeable, no solo en <button> con onClick. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
   }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
 }

@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Enums\EstadoSearchResult;
 use App\Jobs\ExtractEntitiesJob;
 use App\Jobs\MatchMentionsJob;
 use App\Models\Article;
 use App\Models\Extraction;
 use App\Models\Mention;
+use App\Models\SearchResult;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Stancl\Tenancy\Database\Models\Tenant;
 
 function fakeArticleWithEvidence(): Article
 {
@@ -152,6 +155,58 @@ it('escala cuando hay mas de 3 personas con roles distintos entre si', function 
 
     Http::assertSentCount(2);
     expect(Extraction::count())->toBe(2);
+});
+
+it('marca el search_result como extraido cuando la extraccion encuentra personas', function () {
+    Bus::fake();
+    $article = fakeArticleWithEvidence();
+
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = App\Models\Subject::factory()->create();
+    $searchResult = SearchResult::factory()->for($subject, 'subject')->create();
+    tenancy()->end();
+
+    Http::fake(['api.anthropic.com/*' => Http::response(anthropicResponse([
+        'personas' => [
+            ['nombre' => 'Juan Perez', 'rol' => 'imputado', 'delitos' => ['hurto'], 'institucion_relacionada' => null, 'confianza' => 0.9],
+        ],
+        'fecha_hecho' => null,
+        'resumen' => 'Resumen.',
+        'confianza_global' => 0.9,
+    ]), 200)]);
+
+    (new ExtractEntitiesJob($article->id, $searchResult->id))
+        ->handle(app(App\Services\Extraction\AnthropicClient::class));
+
+    tenancy()->initialize($tenant);
+    expect($searchResult->refresh()->estado)->toBe(EstadoSearchResult::Extraido);
+    expect(Mention::first()->search_result_id)->toBe($searchResult->id);
+    tenancy()->end();
+});
+
+it('marca el search_result como sin_menciones cuando la IA no encuentra personas', function () {
+    $article = fakeArticleWithEvidence();
+
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = App\Models\Subject::factory()->create();
+    $searchResult = SearchResult::factory()->for($subject, 'subject')->create();
+    tenancy()->end();
+
+    Http::fake(['api.anthropic.com/*' => Http::response(anthropicResponse([
+        'personas' => [],
+        'fecha_hecho' => null,
+        'resumen' => 'Nada relevante.',
+        'confianza_global' => 0.9,
+    ]), 200)]);
+
+    (new ExtractEntitiesJob($article->id, $searchResult->id))
+        ->handle(app(App\Services\Extraction\AnthropicClient::class));
+
+    tenancy()->initialize($tenant);
+    expect($searchResult->refresh()->estado)->toBe(EstadoSearchResult::SinMenciones);
+    tenancy()->end();
 });
 
 it('lanza excepcion si Claude devuelve un JSON que no cumple el contrato', function () {

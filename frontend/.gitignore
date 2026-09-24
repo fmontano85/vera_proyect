@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+
+# generado por @tanstack/router-plugin, no se comitea (seccion 6 del
+# CLAUDE.md raiz: TanStack Router)
+src/routeTree.gen.ts
 
 # Editor directories and files
 .vscode/*

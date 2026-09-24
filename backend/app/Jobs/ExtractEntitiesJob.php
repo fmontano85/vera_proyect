@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Data\Extraction\ExtractionResultData;
+use App\Enums\EstadoSearchResult;
 use App\Models\Article;
 use App\Models\Extraction;
 use App\Models\Mention;
+use App\Models\SearchResult;
 use App\Services\Extraction\AnthropicClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,13 +24,19 @@ use Throwable;
  * Contrato de salida y reglas de escalado: seccion 3.5 del CLAUDE.md raiz.
  * Requiere ANTHROPIC_API_KEY (config/services.php) para la llamada real;
  * el codigo esta completo, solo falta esa variable en backend/.env.
+ *
+ * $searchResultId (seccion 3.7, 2026-09-24): opcional para no romper la
+ * firma en otros contextos, pero FetchArticleJob siempre lo manda ahora -
+ * al terminar marca ese search_result como 'extraido' o 'sin_menciones'.
  */
 class ExtractEntitiesJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct(private readonly int $articleId)
-    {
+    public function __construct(
+        private readonly int $articleId,
+        private readonly ?int $searchResultId = null,
+    ) {
         $this->onQueue('extraction');
     }
 
@@ -68,6 +76,14 @@ class ExtractEntitiesJob implements ShouldQueue
         $this->crearMentions($article, $resultadoFinal);
 
         $article->update(['estado_extraccion' => 'completado']);
+
+        if ($this->searchResultId !== null) {
+            SearchResult::whereKey($this->searchResultId)->update([
+                'estado' => $resultadoFinal->personas === []
+                    ? EstadoSearchResult::SinMenciones
+                    : EstadoSearchResult::Extraido,
+            ]);
+        }
     }
 
     private function textoLimpio(Article $article): string
@@ -128,6 +144,7 @@ class ExtractEntitiesJob implements ShouldQueue
                     'rol' => $persona->rol->value,
                 ],
                 [
+                    'search_result_id' => $this->searchResultId,
                     'delitos' => $persona->delitos,
                     'confianza' => $persona->confianza,
                 ],

@@ -24,7 +24,7 @@ beforeEach(function () {
     $this->seed(RoleSeeder::class);
 });
 
-it('analista puede iniciar una consulta puntual y encola RunSubjectSearchJob por cada source cse activa', function () {
+it('analista puede iniciar una consulta puntual y encola RunSubjectSearchJob por cada source brave activa', function () {
     Bus::fake();
 
     $tenant = Tenant::create();
@@ -34,14 +34,14 @@ it('analista puede iniciar una consulta puntual y encola RunSubjectSearchJob por
     $subject = Subject::factory()->create();
     tenancy()->end();
 
-    $cse = Source::factory()->create(['tipo' => 'cse', 'activo' => true]);
+    $brave = Source::factory()->create(['tipo' => 'brave', 'activo' => true]);
     Source::factory()->create(['tipo' => 'rss', 'activo' => true]);
-    Source::factory()->create(['tipo' => 'cse', 'activo' => false]);
+    Source::factory()->create(['tipo' => 'brave', 'activo' => false]);
 
     $this->actingAs($user)
         ->postJson("/api/subjects/{$subject->id}/buscar")
         ->assertStatus(202)
-        ->assertJson(['fuentes' => [$cse->id]]);
+        ->assertJson(['fuentes' => [$brave->id]]);
 
     Bus::assertDispatched(RunSubjectSearchJob::class, 1);
 });
@@ -54,14 +54,14 @@ it('lectura no puede iniciar una consulta puntual', function () {
     $subject = Subject::factory()->create();
     tenancy()->end();
 
-    Source::factory()->create(['tipo' => 'cse', 'activo' => true]);
+    Source::factory()->create(['tipo' => 'brave', 'activo' => true]);
 
     $this->actingAs($user)
         ->postJson("/api/subjects/{$subject->id}/buscar")
         ->assertForbidden();
 });
 
-it('responde 422 si no hay fuentes cse activas configuradas', function () {
+it('responde 422 si no hay fuentes brave activas configuradas', function () {
     $tenant = Tenant::create();
     $user = crearUsuarioConRol($tenant, 'analista');
 

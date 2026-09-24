@@ -18,7 +18,7 @@ class SourceFactory extends Factory
     {
         return [
             'nombre' => fake()->company(),
-            'tipo' => fake()->randomElement(['cse', 'rss', 'oficial', 'sanciones']),
+            'tipo' => fake()->randomElement(['cse', 'rss', 'oficial', 'sanciones', 'brave']),
             'config' => [],
             'activo' => true,
         ];

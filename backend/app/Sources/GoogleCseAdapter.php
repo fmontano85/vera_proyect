@@ -36,7 +36,16 @@ class GoogleCseAdapter implements SourceAdapterInterface
         $items = $response->json('items', []);
 
         return [
-            'urls' => array_column($items, 'link'),
+            // Mismo contrato que BraveSearchAdapter (seccion 3.7,
+            // SourceAdapterInterface) - Google CSE no da hostname/fecha
+            // tan directo como Brave, se deriva de lo que si trae.
+            'resultados' => array_map(fn (array $item) => [
+                'url' => $item['link'],
+                'titulo' => $item['title'] ?? null,
+                'descripcion' => $item['snippet'] ?? null,
+                'medio' => isset($item['displayLink']) ? $item['displayLink'] : parse_url($item['link'], PHP_URL_HOST),
+                'fecha' => null,
+            ], $items),
             // El JSON de Google CSE no trae un costo por request - el
             // costo real se lleva por conteo de consultas/dia contra
             // GOOGLE_CSE_DAILY_LIMIT, no por esta llamada individual.

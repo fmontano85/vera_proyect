@@ -26,4 +26,15 @@ return [
      * mas - por eso su propia variable, no un disco de negocio en general.
      */
     'evidencia_manual_disk' => env('EVIDENCIA_MANUAL_DISK', 'local'),
+
+    /**
+     * Seccion 3.8 (agenda de seguimiento): "hoy" y el corte de
+     * vencimientos se calculan en la hora local de los sujetos
+     * obligados, no en UTC (la app corre en UTC; sin esto los
+     * vencimientos se corren 6 horas).
+     */
+    'zona_horaria' => env('VERA_TIMEZONE', 'America/El_Salvador'),
+
+    /** Enlaces del correo de seguimientos pendientes hacia el panel. */
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
 ];

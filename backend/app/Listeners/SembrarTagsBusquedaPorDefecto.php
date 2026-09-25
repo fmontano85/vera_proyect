@@ -29,12 +29,11 @@ class SembrarTagsBusquedaPorDefecto
 
     public function handle(TenantCreated $event): void
     {
-        tenancy()->initialize($event->tenant);
-
-        foreach (self::TAGS_DEFAULT as $nombre) {
-            SearchTag::firstOrCreate(['nombre' => $nombre], ['activo' => true]);
-        }
-
-        tenancy()->end();
+        // run() restaura el tenant previo (ver SembrarFrecuenciasSeguimientoPorDefecto).
+        $event->tenant->run(function () {
+            foreach (self::TAGS_DEFAULT as $nombre) {
+                SearchTag::firstOrCreate(['nombre' => $nombre], ['activo' => true]);
+            }
+        });
     }
 }

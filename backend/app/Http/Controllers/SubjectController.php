@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\Subjects\ActualizarSubject;
 use App\Actions\Subjects\CreateSubject;
 use App\Actions\Subjects\IniciarConsultaPuntual;
 use App\Models\MentionMatch;
 use App\Models\Subject;
+use App\Services\Seguimiento\CalculadoraSeguimiento;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -35,11 +37,29 @@ class SubjectController extends Controller
         return response()->json($action->handle($validated), 201);
     }
 
-    public function show(Subject $subject): JsonResponse
+    public function show(Subject $subject, CalculadoraSeguimiento $calculadora): JsonResponse
     {
         $this->authorize('view', $subject);
 
-        return response()->json($subject->load('aliases'));
+        return response()->json($calculadora->serializar($subject->load('aliases')));
+    }
+
+    /**
+     * Seccion 3.8: solo nivel de riesgo y frecuencia de seguimiento
+     * personalizada (null = volver al default del nivel). Rango 1..365
+     * sin piso regulatorio por ahora (decision del usuario 2026-09-25,
+     * pendiente verificar el instructivo UIF).
+     */
+    public function update(Request $request, Subject $subject, ActualizarSubject $action, CalculadoraSeguimiento $calculadora): JsonResponse
+    {
+        $this->authorize('update', $subject);
+
+        $validated = $request->validate([
+            'nivel_riesgo' => ['sometimes', 'nullable', 'in:bajo,medio,alto'],
+            'frecuencia_seguimiento_dias' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:365'],
+        ]);
+
+        return response()->json($calculadora->serializar($action->handle($subject, $validated)));
     }
 
     /**

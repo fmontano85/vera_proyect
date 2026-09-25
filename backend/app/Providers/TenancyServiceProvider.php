@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Listeners\SembrarFrecuenciasSeguimientoPorDefecto;
 use App\Listeners\SembrarTagsBusquedaPorDefecto;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -23,6 +24,7 @@ class TenancyServiceProvider extends ServiceProvider
             // defecto (sesion posterior a la 3.7) si es lo unico que corre aqui.
             Events\TenantCreated::class => [
                 SembrarTagsBusquedaPorDefecto::class,
+                SembrarFrecuenciasSeguimientoPorDefecto::class,
             ],
             Events\SavingTenant::class => [],
             Events\TenantSaved::class => [],

@@ -8,9 +8,22 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-25 (duodécimo bloque — parámetros de Brave en origen IMPLEMENTADOS + ventana de 60 días)
+**Última actualización:** 2026-09-25 (decimotercer bloque — sección 3.8 / Fase 2: PR backend IMPLEMENTADO, revisado y comiteado; frontend pendiente)
 
 ### En qué estábamos
+**Sesión del 2026-09-25 (decimotercer bloque — Fase 2, PR backend de la sección 3.8):** plan presentado y confirmado. Decisiones del usuario: **destinatarios del correo = `oficial_cumplimiento` + `admin`** del tenant; **defaults alto 30 / medio 90 / bajo 180 / sin nivel 180** (provisionales); **sin piso UIF por ahora** (solo 1..365, pendiente verificar el instructivo); **configuración en tabla propia auditada** (`frecuencias_seguimiento`). Criterio tomado por defecto y no objetado: el correo diario sale **solo los días con vencimientos nuevos** e informa cuántos siguen vencidos de días anteriores. **182 tests pasan** (138 + 44 nuevos). Comiteado en `develop`.
+- **3 migraciones** (reversibles, probadas rollback+migrate en MariaDB): `subjects` + `frecuencia_seguimiento_dias`/`proximo_seguimiento_en`/`ultimo_seguimiento_en`/`ultimo_seguimiento_por` (índice `tenant_id`+`proximo_seguimiento_en`); `frecuencias_seguimiento` (tenant, `nivel_riesgo` alto|medio|bajo|sin_nivel, `dias`, unique); `alerts` (unique tenant+tipo+alertable+`vencimiento` = idempotencia).
+- **`App\Casts\FechaSinHora`** (nuevo): guarda fechas de calendario como `Y-m-d`. **Gotcha real:** el cast `date` de Eloquent guarda `'Y-m-d H:i:s'`; en SQLite (tests) eso rompe comparaciones de texto contra `'Y-m-d'` (el job no vería los vencidos del día y duplicaría alertas). MariaDB normaliza, pero la app debe comportarse igual en ambos. **Patrón a repetir para cualquier columna DATE nueva.**
+- `CalculadoraSeguimiento` (hoy en `America/El_Salvador` vía `vera.zona_horaria`/`VERA_TIMEZONE`; frecuencia efectiva; próximo = último seguimiento o alta + días; bloque `seguimiento` del JSON). Filtra frecuencias por `tenant_id` explícito además del scope (falla cerrado a los defaults).
+- `Subject`: hooks `creating`/`updating` recalculan `proximo_seguimiento_en` (en `creating`, no `saving`, porque `BelongsToTenant` asigna `tenant_id` en su propio `creating`); `frecuencia_seguimiento_dias` fillable y auditado; relación `ultimoSeguimientoUsuario` **oculta** en el JSON (se renombró desde `ultimoSeguimientoPor` porque su clave snake chocaba con la columna FK y exponía el User completo con email).
+- Endpoints: `GET /api/seguimientos?filtro=vencidos|proximos` (activos, orden vencimiento + nivel), `POST /api/subjects/{id}/seguimiento-realizado` (observación → `activity_log` evento `seguimiento_realizado`), `PATCH /api/subjects/{id}` (nivel, frecuencia; null = default del nivel), `GET/PUT /api/configuracion/frecuencias-seguimiento` (PUT solo `admin`, recalcula subjects sin frecuencia propia). `GET /subjects/{id}` agrega `seguimiento`; `GET /subjects/{id}/resultados` agrega `nuevo_desde_ultimo_seguimiento`.
+- Jobs (cola `alerts`): `DetectarSeguimientosVencidosJob` (diario 07:00 El Salvador en `routes/console.php`, `schedule:work` ya corría en supervisord; cero HTTP externo, verificado con `Http::preventStrayRequests`) y `SendAlertJob` (un correo `ResumenSeguimientosPendientes` en Blade markdown; marca `enviado_en`; evento `alertas_enviadas` en `activity_log`; sin destinatarios deja las alertas pendientes + warning).
+- `vera:inicializar-seguimientos` (idempotente): corrido en dev — 6 subjects del tenant real + 1 del demo con fecha calculada.
+- **Verificado en MariaDB real** con el tenant de demo (no el del usuario): 2 corridas del job → 1 alerta, `vencimiento` guardado `2026-09-24`, correo en el log con persona/nivel/enlace; datos restaurados.
+- **activitylog v5 (gotcha):** `dontSubmitEmptyLogs()` ya no existe → `dontLogEmptyChanges()`; los cambios de atributos van en `attribute_changes`, no en `properties['attributes']`.
+- `docs/MANUAL_TECNICO.md` sección 10 actualizada (tareas programadas, `vera:inicializar-seguimientos`, SMTP).
+- **`/code-review high` sobre el PR: 10 hallazgos, 9 corregidos con test (182 tests pasan), 1 se resuelve con el PR frontend.** (1) El correo incluía alertas obsoletas y mostraba la fecha actual del subject → `SendAlertJob` descarta (borra) alertas no vigentes (subject atendido después de la alerta, inactivo o ya no vencido) y el correo recibe **alertas** y muestra su `vencimiento`. (2) Alertas sin enviar por falta de destinatarios no se reintentaban → el job diario encola el envío mientras existan alertas sin enviar. (3) Recalcular la fecha de un subject ya vencido duplicaba la alerta → **una alerta por ciclo** (no se crea otra si ya hay una creada después de `ultimo_seguimiento_en`). (4) `FechaSinHora` se serializaba con hora/zona (off-by-one en UTC-6) → implementa `SerializesCastableAttributes` (`Y-m-d`). (5) Cada seguimiento reindexaba en Meilisearch síncrono dentro de la transacción → `Subject::searchIndexShouldBeUpdated()` solo si cambia `nombre_canonico`/`activo`. (6) Reintento tras enviar duplicaba correos → `SendAlertJob` es `ShouldBeUnique` por tenant y trabaja en una transacción con `lockForUpdate`; si ningún correo sale, revierte. (7) Un destinatario inválido bloqueaba a todos y todos veían las direcciones → **un correo por destinatario**, fallos individuales al log. (8) Los listeners de siembra hacían `tenancy()->end()` y dejaban sin contexto a quien creaba el tenant (falla abierto) → `$tenant->run()` (también en `SembrarTagsBusquedaPorDefecto`, que ya lo tenía). **Gotcha:** `Tenant::run()` no restaura el contexto si el callback lanza — en `SendAlertJob` se usa `try/finally` propio. (9) Consulta de "vencidos" repetida → `Subject::scopeVencidosAl()` y `CalculadoraSeguimiento::serializar()`. (10) El enlace del correo apunta a `/seguimientos`, que llega con el PR frontend. `git status` verificado después del review: árbol intacto.
+
 **Sesión del 2026-09-25 (duodécimo bloque — implementado lo decidido en los bloques décimo y undécimo):** plan presentado y confirmado por el usuario, con 3 decisiones suyas: **no enviar `country`** (`SV` no está entre los 38 valores aceptados; los `site:` ya restringen); **si la query excede el límite se omiten aliases/tags desde el final**, nunca el nombre canónico ni los `site:` (en búsqueda por tags, 422 para que elija menos); **guardar la metadata de la query en `search_runs`**. Además: **`ARTICLE_WINDOW_DAYS=60`** (decisión del usuario, antes 30). **138 tests pasan** (122 + 16 nuevos).
 - `App\Services\Search\LimiteDeQuery` (nuevo): arma `("t1" OR "t2") (site:a OR site:b)` respetando **600 caracteres y 75 palabras** (palabras = tokens separados por espacios); omite términos desde el final y devuelve `omitidos`; lanza `InvalidArgumentException` si ni el primer término cabe. Ya **no se trunca con `mb_substr`** (podía cortar un paréntesis o un `site:` a la mitad).
 - `SourceAdapterInterface::buscar(string $query, ?int $diasAtras = null)`: devuelve además `metadata`. `BraveSearchAdapter` envía `spellcheck=false` (como string: el cliente HTTP serializaría el booleano como `0`), `search_lang=es`, `freshness=(hoy−días)to(hoy)` en UTC, sin `country`; rechaza una query que exceda el límite **antes de reservar cuota**; devuelve `query.original/altered/spellcheck_off/search_operators`. `GoogleCseAdapter` traduce los días a `dateRestrict=dN` y devuelve `metadata: null`.
@@ -267,9 +280,11 @@ Con eso resuelto, se construyó **todo el frontend funcional de Fase 1** de punt
 - [ ] **Hueco de cobertura conocido — laprensagrafica.com** (aceptado por el usuario 2026-09-25, opción 1): el índice de Brave para LPG está atrasado meses; con `freshness` de 60 días LPG no aporta resultados. Incluirlo en el informe de Fase 0. Retomar con las opciones 2/3 del duodécimo bloque cuando el usuario lo decida.
 - [ ] **Fase 0 — comillas:** en la verificación real `search_operators.cleaned_query` vino sin comillas y los resultados no contenían el nombre. Medir con los 20 nombres de Fase 0 si las comillas se respetan (comparar contra `news/search` y contra la query sin `site:`).
 - [x] ~~Decisión del usuario: si Fase 2 también deja resultados en `nuevo`~~ — **reemplazada el 2026-09-25:** en Fase 2 no hay consultas automáticas; es una agenda de seguimiento manual (sección 3.8).
-- [ ] **Implementar sección 3.8 (Fase 2)**: campos de seguimiento en `subjects`, configuración de días por nivel en el tenant, job diario sin llamadas externas, `SendAlertJob` con resumen agrupado, SMTP, panel de seguimientos, botón "Seguimiento realizado", filtro de resultados nuevos desde el último seguimiento. Presentar plan antes de codificar.
-- [ ] **Decisión del usuario:** destinatario de las notificaciones de seguimiento (solo `oficial_cumplimiento`, también `analista`, o responsable asignado por subject).
-- [ ] **Verificar:** frecuencia mínima de revisión exigida por el instructivo UIF por nivel de riesgo — si existe, los días configurables no deben poder quedar por debajo.
+- [x] ~~Implementar sección 3.8 — PR backend~~ — **hecho 2026-09-25** (decimotercer bloque, comiteado).
+- [ ] **Implementar sección 3.8 — PR frontend** (presentar plan antes): panel `/seguimientos` (vencidos/próximos), bloque de seguimiento en `/subjects/$subjectId` (último/próximo, frecuencia efectiva default vs. personalizada, editar nivel/frecuencia, botón "Seguimiento realizado" con observación), filtro "Nuevos desde el último seguimiento" en `FiltroEstado` (`nuevo_desde_ultimo_seguimiento`), pantalla de configuración de días por nivel (solo `admin`), tipos en `types/api.ts`.
+- [ ] **SMTP real para producción** (`MAIL_MAILER=smtp`): sin esto el resumen de seguimientos no sale del servidor (en dev queda en el log).
+- [x] ~~Decisión del usuario: destinatario de las notificaciones~~ — **`oficial_cumplimiento` + `admin`** (2026-09-25).
+- [ ] **Verificar:** frecuencia mínima de revisión exigida por el instructivo UIF por nivel de riesgo — **decisión 2026-09-25: sin piso por ahora** (1..365); si existe, agregarla como validación en `SubjectController::update` y `ConfiguracionController::actualizarFrecuencias`. Los defaults 30/90/180/180 son provisionales hasta entonces.
 - [x] ~~Decisión del usuario: valor real de `BRAVE_SEARCH_MONTHLY_LIMIT`~~ — **1000** (2026-09-24, con el precio real de Brave confirmado por el usuario: $5/1000 requests, $5 crédito/mes).
 - [x] ~~Decisión del usuario: ventana `ARTICLE_WINDOW_DAYS`~~ — **60 días** (2026-09-25), aplicado en `.env`, `.env.example` y default de `config/vera.php`.
 - [ ] Dónde va la atribución pública "Powered by Brave" (requisito para conservar el crédito mensual) — sin decidir.
@@ -436,7 +451,10 @@ matches                    (mention_id, subject_id, score_meilisearch (NULLABLE 
 sanction_lists             (ofac_sdn, un_consolidated, eu; versión, fecha_importación)
 sanction_entries           (lista, nombre, aliases[], tipo, programa, país, raw_json)
 sanction_matches           (subject_id, sanction_entry_id, score, estado, resolución)
-alerts                     (tenant_id, tipo [seguimiento_pendiente|...], referencia polimórfica, canal, enviado_en)
+alerts                     (IMPLEMENTADO 2026-09-25: tenant_id, tipo [seguimiento_pendiente], referencia
+                            polimórfica, vencimiento, canal, enviado_en; unique por alertable+vencimiento)
+frecuencias_seguimiento    (IMPLEMENTADO 2026-09-25: tenant_id, nivel_riesgo [alto|medio|bajo|sin_nivel],
+                            dias; auditado; sembrado al crear el tenant)
 reports                    (tenant_id, tipo, parámetros, generado_por, path)
 activity_log               (spatie)
 ```
@@ -536,7 +554,9 @@ Reglas:
 
 **Impacto esperado:** el gasto en Anthropic pasa a ser bajo demanda (en la prueba de `Juan Carlos Pérez` se gastaron 22 llamadas en artículos irrelevantes).
 
-### 3.8 Seguimiento de lista de vigilancia (Fase 2 — definido 2026-09-25, pendiente de implementar)
+### 3.8 Seguimiento de lista de vigilancia (Fase 2 — definido 2026-09-25; backend IMPLEMENTADO 2026-09-25, frontend pendiente)
+
+**Decisiones confirmadas (2026-09-25):** correo a `oficial_cumplimiento` + `admin`; defaults alto 30 / medio 90 / bajo 180 / sin nivel 180 días (provisionales); sin piso UIF por ahora (1..365); configuración en tabla `frecuencias_seguimiento` auditada; permisos tal como la propuesta de abajo; correo solo los días con vencimientos nuevos (informa además cuántos siguen vencidos); corte diario 07:00 `America/El_Salvador`.
 
 **Principio:** el sistema agenda y notifica; el usuario decide y ejecuta. Ninguna consulta a Brave ni extracción IA ocurre sin clic del usuario.
 
@@ -684,6 +704,7 @@ ARTICLE_WINDOW_DAYS=60 (confirmado 2026-09-25, antes 30; también es el freshnes
 FILESYSTEM_DISK=r2, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 MAIL_MAILER=smtp, MAIL_HOST, MAIL_PORT, MAIL_USERNAME, MAIL_PASSWORD
 GOOGLE_SHEETS_CREDENTIALS_JSON (opcional)
+VERA_TIMEZONE=America/El_Salvador (corte diario de la agenda de seguimiento, sección 3.8; la app sigue en UTC)
 SANCTUM_STATEFUL_DOMAINS, SESSION_DOMAIN, FRONTEND_URL
 ```
 

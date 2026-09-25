@@ -41,4 +41,23 @@ class SubjectPolicy
     {
         return $user->hasAnyRole(['admin', 'oficial_cumplimiento', 'analista']);
     }
+
+    /**
+     * Seccion 3.8: editar nivel de riesgo / frecuencia de seguimiento del
+     * subject - mismos roles que gestionan la lista de vigilancia.
+     */
+    public function update(User $user, Subject $subject): bool
+    {
+        return $user->hasAnyRole(['admin', 'oficial_cumplimiento', 'analista']);
+    }
+
+    /**
+     * Seccion 3.8: cerrar un seguimiento. No es una resolucion de
+     * coincidencia (no aplica el control de dos pasos de la 3.2), por eso
+     * analista tambien puede. lectura no.
+     */
+    public function marcarSeguimiento(User $user, Subject $subject): bool
+    {
+        return $user->hasAnyRole(['admin', 'oficial_cumplimiento', 'analista']);
+    }
 }

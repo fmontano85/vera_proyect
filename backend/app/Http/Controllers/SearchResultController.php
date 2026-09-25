@@ -23,11 +23,23 @@ class SearchResultController extends Controller
     {
         $this->authorize('view', $subject);
 
+        /**
+         * Seccion 3.8: resultados que aparecieron despues del ultimo
+         * seguimiento realizado. firstOrCreate por (subject_id, url_hash)
+         * en RunSubjectSearchJob garantiza que created_at es la primera
+         * vez que esa URL salio para el subject - sin columna extra. Si
+         * nunca hubo seguimiento, nada se marca.
+         */
+        $ultimoSeguimiento = $subject->ultimo_seguimiento_en;
+
         $resultados = SearchResult::query()
             ->where('subject_id', $subject->id)
             ->with(['mentions' => fn ($q) => $q->with('match'), 'article'])
             ->latest()
-            ->paginate();
+            ->paginate()
+            ->through(fn (SearchResult $resultado) => $resultado->toArray() + [
+                'nuevo_desde_ultimo_seguimiento' => $ultimoSeguimiento !== null && $resultado->created_at->gt($ultimoSeguimiento),
+            ]);
 
         return response()->json($resultados);
     }

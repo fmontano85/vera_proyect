@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ConfiguracionController;
 use App\Http\Controllers\MatchController;
 use App\Http\Controllers\SearchResultController;
 use App\Http\Controllers\SearchTagController;
+use App\Http\Controllers\SeguimientoController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TagSearchController;
 use Illuminate\Support\Facades\Route;
@@ -28,7 +30,7 @@ Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'me']);
 |
 */
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
-    Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show', 'update']);
     Route::post('subjects/{subject}/buscar', [SubjectController::class, 'buscar']);
     Route::get('subjects/{subject}/matches', [SubjectController::class, 'matches']);
     Route::post('matches/{match}/proponer', [MatchController::class, 'proponer']);
@@ -45,4 +47,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('tags-busqueda', [SearchTagController::class, 'store']);
     Route::post('busquedas-tags', [TagSearchController::class, 'buscar']);
     Route::get('busquedas-tags/resultados', [TagSearchController::class, 'resultados']);
+
+    // Agenda de seguimiento de la lista de vigilancia (seccion 3.8, Fase 2).
+    Route::get('seguimientos', [SeguimientoController::class, 'index']);
+    Route::post('subjects/{subject}/seguimiento-realizado', [SeguimientoController::class, 'realizado']);
+    Route::get('configuracion/frecuencias-seguimiento', [ConfiguracionController::class, 'frecuencias']);
+    Route::put('configuracion/frecuencias-seguimiento', [ConfiguracionController::class, 'actualizarFrecuencias']);
 });

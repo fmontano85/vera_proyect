@@ -363,9 +363,21 @@ docker exec -i vera_mariadb mariadb -u root -p"$DB_ROOT_PASSWORD" < backup.sql
 
 El scheduler de Laravel corre dentro del contenedor `api` (proceso `schedule` bajo supervisor, junto a `php-fpm` y `horizon` — ver `docker/api/supervisord.conf`). No hace falta un cron en el host: el contenedor ya invoca `schedule:run` cada minuto internamente.
 
-Tareas programadas por el pipeline (sección 3.4, a implementar):
-- Monitoreo continuo diario, priorizado por `nivel_riesgo`, respetando `GOOGLE_CSE_DAILY_LIMIT`.
-- `ImportSanctionListsJob` — semanal (OFAC SDN, ONU consolidada, UE).
+> **IMPORTANTE:** ningún job programado llama a servicios externos de pago (Brave, Anthropic). Toda consulta o extracción la dispara un usuario (secciones 3.7 y 3.8 del `CLAUDE.md`).
+
+Tareas programadas (`backend/routes/console.php`):
+
+| Tarea | Frecuencia | Qué hace |
+|-------|-----------|----------|
+| `DetectarSeguimientosVencidosJob` | Diario 07:00 `America/El_Salvador` (`schedule:list` lo muestra en UTC: `0 13 * * *`) | Solo BD propia: crea una alerta por sujeto con `proximo_seguimiento_en <= hoy` (idempotente) y encola `SendAlertJob`, que manda un correo de resumen por tenant a `oficial_cumplimiento` + `admin` |
+| `ImportSanctionListsJob` | Semanal (pendiente de programar) | OFAC SDN, ONU consolidada, UE |
+
+Al desplegar la agenda de seguimiento sobre una base con sujetos existentes, correr una vez (idempotente):
+```bash
+docker exec vera_api php artisan vera:inicializar-seguimientos
+```
+
+> **IMPORTANTE:** el correo requiere SMTP real en producción (`MAIL_MAILER=smtp` y credenciales). Con `MAIL_MAILER=log` (desarrollo) el resumen queda en `storage/logs/laravel.log`. Si un tenant no tiene usuarios `oficial_cumplimiento` ni `admin`, las alertas quedan pendientes de envío y se registra un warning en el log.
 
 Verificar que el scheduler está corriendo:
 ```bash

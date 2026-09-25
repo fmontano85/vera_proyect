@@ -25,7 +25,7 @@ it('extrae las urls de una respuesta real de Brave Search', function () {
 
     Http::fake(['api.search.brave.com/*' => Http::response($respuesta, 200)]);
 
-    $resultado = (new BraveSearchAdapter())->buscar('"Juan Perez"');
+    $resultado = (new BraveSearchAdapter)->buscar('"Juan Perez"');
 
     expect(array_column($resultado['resultados'], 'url'))->toBe([
         'https://laprensagrafica.com/nota-1',
@@ -44,7 +44,7 @@ it('extrae las urls de una respuesta real de Brave Search', function () {
 it('devuelve una lista vacia si Brave Search no encuentra resultados', function () {
     Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
 
-    $resultado = (new BraveSearchAdapter())->buscar('nombre sin coincidencias');
+    $resultado = (new BraveSearchAdapter)->buscar('nombre sin coincidencias');
 
     expect($resultado['resultados'])->toBe([]);
 });
@@ -53,7 +53,7 @@ it('envia la key en el header X-Subscription-Token, no como query param', functi
     config(['services.brave_search.api_key' => 'mi-key-secreta']);
     Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
 
-    (new BraveSearchAdapter())->buscar('prueba');
+    (new BraveSearchAdapter)->buscar('prueba');
 
     Http::assertSent(function ($request) {
         return $request->hasHeader('X-Subscription-Token', 'mi-key-secreta')
@@ -61,22 +61,92 @@ it('envia la key en el header X-Subscription-Token, no como query param', functi
     });
 });
 
-it('trunca la query a 600 caracteres antes de enviarla', function () {
+it('rechaza una query de mas de 600 caracteres sin llamar a Brave ni gastar cuota', function () {
+    config(['services.brave_search.monthly_limit' => 1]);
     Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
 
-    $queryLarga = str_repeat('a', 1000);
-    (new BraveSearchAdapter())->buscar($queryLarga);
+    $adapter = new BraveSearchAdapter;
+
+    expect(fn () => $adapter->buscar(str_repeat('a', 601)))->toThrow(InvalidArgumentException::class);
+    Http::assertNothingSent();
+
+    // La cuota no se consumio: la siguiente consulta valida si sale.
+    $adapter->buscar('"Juan Perez"');
+    Http::assertSentCount(1);
+});
+
+it('rechaza una query de mas de 75 palabras sin llamar a Brave', function () {
+    Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
+
+    expect(fn () => (new BraveSearchAdapter)->buscar(implode(' ', array_fill(0, 76, 'a'))))
+        ->toThrow(InvalidArgumentException::class);
+
+    Http::assertNothingSent();
+});
+
+it('envia spellcheck=false y search_lang=es, sin country', function () {
+    Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
+
+    (new BraveSearchAdapter)->buscar('"Christopher Yuvini Carrillo"');
 
     Http::assertSent(function ($request) {
-        return strlen((string) $request['q']) === 600;
+        return $request['spellcheck'] === 'false'
+            && $request['search_lang'] === 'es'
+            && ! isset($request['country']);
     });
+});
+
+it('envia freshness como rango explicito (hoy - dias)to(hoy) cuando recibe dias', function () {
+    Carbon\Carbon::setTestNow('2026-09-25 15:00:00');
+    Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
+
+    (new BraveSearchAdapter)->buscar('"Juan Perez"', 60);
+
+    Http::assertSent(fn ($request) => $request['freshness'] === '2026-07-27to2026-09-25');
+    Carbon\Carbon::setTestNow();
+});
+
+it('no envia freshness si no recibe dias', function () {
+    Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
+
+    (new BraveSearchAdapter)->buscar('"Juan Perez"');
+
+    Http::assertSent(fn ($request) => ! isset($request['freshness']));
+});
+
+it('devuelve la metadata de la query que reporta Brave (original, altered, search_operators)', function () {
+    Http::fake(['api.search.brave.com/*' => Http::response([
+        'query' => [
+            'original' => '"Juan Perez" site:a.com',
+            'altered' => '"Juan Pérez" site:a.com',
+            'spellcheck_off' => true,
+            'search_operators' => ['applied' => true, 'sites' => ['a.com']],
+            'otro_campo' => 'se ignora',
+        ],
+        'web' => ['results' => []],
+    ], 200)]);
+
+    $resultado = (new BraveSearchAdapter)->buscar('"Juan Perez" site:a.com');
+
+    expect($resultado['metadata'])->toBe([
+        'original' => '"Juan Perez" site:a.com',
+        'altered' => '"Juan Pérez" site:a.com',
+        'spellcheck_off' => true,
+        'search_operators' => ['applied' => true, 'sites' => ['a.com']],
+    ]);
+});
+
+it('devuelve metadata null si Brave no trae el bloque query', function () {
+    Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
+
+    expect((new BraveSearchAdapter)->buscar('"Juan Perez"')['metadata'])->toBeNull();
 });
 
 it('nunca llama a Brave una vez alcanzada la cuota mensual configurada', function () {
     config(['services.brave_search.monthly_limit' => 2]);
     Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
 
-    $adapter = new BraveSearchAdapter();
+    $adapter = new BraveSearchAdapter;
     $adapter->buscar('"Juan Perez"');
     $adapter->buscar('"Juan Perez"');
 
@@ -89,7 +159,7 @@ it('cuenta la cuota por separado entre meses distintos', function () {
     config(['services.brave_search.monthly_limit' => 1]);
     Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
 
-    $adapter = new BraveSearchAdapter();
+    $adapter = new BraveSearchAdapter;
     Carbon\Carbon::setTestNow('2026-09-30 12:00:00');
     $adapter->buscar('"Juan Perez"');
     expect(fn () => $adapter->buscar('"Juan Perez"'))->toThrow(RuntimeException::class);

@@ -23,15 +23,18 @@ class GoogleCseAdapter implements SourceAdapterInterface
 {
     private const URL = 'https://www.googleapis.com/customsearch/v1';
 
-    public function buscar(string $query): array
+    public function buscar(string $query, ?int $diasAtras = null): array
     {
         $this->reservarCupoDiario();
 
-        $response = Http::timeout(15)->retry(2, 500)->get(self::URL, [
+        // dateRestrict=dN es el equivalente de Google al freshness de
+        // Brave (mismo contrato de SourceAdapterInterface).
+        $response = Http::timeout(15)->retry(2, 500)->get(self::URL, array_filter([
             'key' => config('services.google_cse.api_key'),
             'cx' => config('services.google_cse.cx'),
             'q' => $query,
-        ])->throw();
+            'dateRestrict' => $diasAtras !== null ? "d{$diasAtras}" : null,
+        ], fn ($valor) => $valor !== null))->throw();
 
         $items = $response->json('items', []);
 
@@ -50,6 +53,7 @@ class GoogleCseAdapter implements SourceAdapterInterface
             // costo real se lleva por conteo de consultas/dia contra
             // GOOGLE_CSE_DAILY_LIMIT, no por esta llamada individual.
             'costo' => null,
+            'metadata' => null,
         ];
     }
 

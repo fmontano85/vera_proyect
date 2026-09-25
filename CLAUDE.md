@@ -8,9 +8,49 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-24 (octavo bloque — búsqueda por tags + fix real de ventana temporal + fix del misterio "archivo espurio backend/vera")
+**Última actualización:** 2026-09-25 (duodécimo bloque — parámetros de Brave en origen IMPLEMENTADOS + ventana de 60 días)
 
 ### En qué estábamos
+**Sesión del 2026-09-25 (duodécimo bloque — implementado lo decidido en los bloques décimo y undécimo):** plan presentado y confirmado por el usuario, con 3 decisiones suyas: **no enviar `country`** (`SV` no está entre los 38 valores aceptados; los `site:` ya restringen); **si la query excede el límite se omiten aliases/tags desde el final**, nunca el nombre canónico ni los `site:` (en búsqueda por tags, 422 para que elija menos); **guardar la metadata de la query en `search_runs`**. Además: **`ARTICLE_WINDOW_DAYS=60`** (decisión del usuario, antes 30). **138 tests pasan** (122 + 16 nuevos).
+- `App\Services\Search\LimiteDeQuery` (nuevo): arma `("t1" OR "t2") (site:a OR site:b)` respetando **600 caracteres y 75 palabras** (palabras = tokens separados por espacios); omite términos desde el final y devuelve `omitidos`; lanza `InvalidArgumentException` si ni el primer término cabe. Ya **no se trunca con `mb_substr`** (podía cortar un paréntesis o un `site:` a la mitad).
+- `SourceAdapterInterface::buscar(string $query, ?int $diasAtras = null)`: devuelve además `metadata`. `BraveSearchAdapter` envía `spellcheck=false` (como string: el cliente HTTP serializaría el booleano como `0`), `search_lang=es`, `freshness=(hoy−días)to(hoy)` en UTC, sin `country`; rechaza una query que exceda el límite **antes de reservar cuota**; devuelve `query.original/altered/spellcheck_off/search_operators`. `GoogleCseAdapter` traduce los días a `dateRestrict=dN` y devuelve `metadata: null`.
+- `RunSubjectSearchJob` pasa `ARTICLE_WINDOW_DAYS`; `RunTagSearchJob` pasa `dias_atras` o `ARTICLE_WINDOW_DAYS`. Aliases ordenados por `id` (el recorte es determinista: se omiten primero los más recientes — sin `sortBy` el orden dependía de la BD y un test falló por eso). `RunTagSearchJob::construirQuery()` ahora es público/estático y lo reutiliza `IniciarBusquedaPorTags` para responder 422 antes de encolar.
+- Migración `2026_09_25_174137_add_metadata_query_to_search_runs_table`: `search_runs.metadata_query` (JSON nullable) = `{proveedor: <metadata de Brave>, terminos_omitidos: [...]}`. Aplicada en dev y probada reversible (rollback + migrate).
+- **Verificado contra Brave real (1 request):** `"Christopher Yuvini Carrillo"` + 2 `site:` con `freshness` de 60 días → Brave aceptó todos los parámetros, `spellcheck_off: true`, sin `altered`, `search_operators.applied: true` con ambos sitios; 5 resultados, todos de los últimos 8 días. **Observación para Fase 0 (no se tocó):** `search_operators.cleaned_query` vino **sin las comillas** y los 5 resultados eran noticias genéricas de esos medios en las que el nombre no aparece en título/URL — refuerza la sospecha ya anotada sobre cómo trata Brave las comillas junto con `site:`.
+- `horizon:terminate` corrido después de los cambios.
+- **Hallazgo de cobertura (prueba del usuario, tag "Capturan"): Brave casi no tiene indexado laprensagrafica.com.** Una nota real de LPG del 24-sep-2026 no apareció. Diagnóstico (5 requests): `"Capturan" site:laprensagrafica.com` con `freshness` de 60 días → **0**; sin `freshness` → la nota de LPG más reciente es del **1-dic-2025**; el título exacto no aparece; `news/search` → la más reciente es de **mar-2026**. Los otros 6 medios sí traen notas de 1-3 días. **No es un bug de VERA ni de `freshness`**, y el 403 del scrape no influye (la búsqueda no descarga nada). `robots.txt` de LPG **permite explícitamente a BraveBot**; la nota responde 403 a un user-agent de navegador desde el servidor de VERA y 200 al user-agent de Bravebot → probable filtrado del WAF por IP/comportamiento que afecta al crawler real de Brave (no verificable sin los logs del WAF de LPG). RSS y sitemap de LPG también dan 403 desde el servidor. **Decisión del usuario (2026-09-25): opción 1 — aceptarlo y documentarlo como hueco de cobertura conocido por ahora.** Descartado a propósito: suplantar el user-agent de Bravebot en `FetchArticleJob` (suplantación de crawler; contrario a OWASP y probablemente a los términos del medio). Opciones futuras registradas: (2) pedir a LPG lista blanca de la IP de VERA o un feed/sitemap → adaptador RSS/sitemap (sección 4); (3) que LPG revise en su WAF el bloqueo al crawler real de Brave.
+
+**Sesión del 2026-09-25 (undécimo bloque — parámetros de Brave verificados en la referencia oficial, SIN código todavía):** se leyó la referencia oficial de Brave Web Search (`https://api-dashboard.search.brave.com/api-reference/web/search/get`). **Corrige datos del décimo bloque** que venían de documentación de terceros:
+- **Límite de `q`: 600 caracteres Y 75 palabras** (no 400/50). El truncado a 600 caracteres del adaptador es correcto; **falta controlar las 75 palabras** (nombre + aliases + `site:` + `OR`).
+- **`freshness` filtra por antigüedad de la página** = fecha más relevante que reporta el contenido (publicación **o última modificación**), no por fecha de descubrimiento. Consecuencia: un artículo viejo editado recientemente puede colarse → `VentanaTemporal` y el chequeo con fecha real en `FetchArticleJob` siguen siendo obligatorios.
+- **`spellcheck` viene en `true` por default y, si corrige, Brave busca SIEMPRE con la query modificada** (la corrección aparece en `query.altered` de la respuesta). Riesgo directo para nombres propios poco comunes ("Yuvini"). **Decisión: enviar `spellcheck=false` siempre.** Puede explicar parte de los "0 resultados"/resultados irrelevantes pendientes en Fase 0.
+- **Defaults `country=US` y `search_lang=en`.** Decisión: enviar `search_lang=es`. Para `country`: verificar si `SV` está en la lista de valores aceptados; si no, decidir con el usuario entre `ALL` u otro valor (afecta ranking). El CLAUDE.md no documentaba qué envía hoy el adaptador — revisar el código.
+- `count`: máximo y default 20; `offset` máximo 9 (hasta 200 resultados paginando, 1 request por página). Sin decisión de paginar.
+- La respuesta trae `query.original`, `query.altered`, `query.search_operators.applied` y `query.search_operators.sites`: usarlos para verificar que la query llegó sin alterar y que los `site:` se aplicaron. Propuesta: guardarlos en `search_runs` para auditoría (confirmar en el plan).
+
+Verificación manual (gasta 1 request):
+```bash
+curl -s -G "https://api.search.brave.com/res/v1/web/search" \
+  --data-urlencode 'q=Christopher Yuvini Carrillo site:diario1.com OR site:lanoticiasv.com' \
+  -H "Accept: application/json" -H "X-Subscription-Token: TU_KEY" | jq '.query'
+```
+
+**Sesión del 2026-09-25 (décimo bloque — filtro temporal en origen, SIN código todavía):** confirmado por el usuario: **Brave debe hacer la consulta ya filtrada por la ventana temporal de la app**, no devolver todo y filtrar después. Verificado en la documentación de la API: el parámetro `freshness` acepta `pd`/`pw`/`pm`/`py` o un rango personalizado `AAAA-MM-DDtoAAAA-MM-DD` (inicio y fin obligatorios). Decisiones y reglas:
+- `BraveSearchAdapter` envía **siempre** `freshness` como rango explícito `(hoy − días)to(hoy)`, con días = `dias_atras` de la búsqueda (tags) o `ARTICLE_WINDOW_DAYS` (consulta puntual). No usar `pm`/`py`: no coinciden con ventanas arbitrarias (45, 90 días).
+- **`VentanaTemporal` y el chequeo con la fecha real en `FetchArticleJob` se mantienen como segunda capa.** (Corregido en el undécimo bloque: `freshness` filtra por antigüedad de la página — publicación o última modificación —, no por fecha de descubrimiento; un artículo viejo modificado recientemente puede colarse.)
+- Efecto aceptado: las noticias fuera de la ventana ya **no aparecen** en la lista (antes aparecían como GAP `fuera_de_ventana`). Esto vuelve más urgente decidir `ARTICLE_WINDOW_DAYS` para consulta puntual (hoy 30).
+- ~~Hallazgo a verificar: límite 400/50~~ — **resuelto en el undécimo bloque:** la referencia oficial dice 600 caracteres y 75 palabras.
+- Registrado como opción para la prueba de recall de Fase 0 (no decidido): el endpoint de noticias de Brave (`news/search`), incluido en el mismo plan Search, también soporta `freshness` con rango.
+- También se corrigió la subsección "Qué existe hoy / Pipeline", que seguía describiendo el flujo previo a la sección 3.7 (fetch automático).
+
+**Sesión del 2026-09-25 (noveno bloque — Fase 2 redefinida, SIN código todavía):** el usuario descartó cualquier consulta automática en Fase 2 (consultas diarias a Brave por sujeto = consumo innecesario; la mayoría repetiría resultados). **Esto reemplaza la decisión anterior** ("Fase 2 corre `RunSubjectSearchJob` diario y deja resultados en `nuevo`"): ahora **ningún job programado llama a Brave ni a Anthropic**. La Fase 2 pasa a ser una **agenda de seguimientos**: el sistema solo notifica que a un sujeto le toca revisión; el usuario decide si ejecuta la consulta puntual (flujo 3.7) y marca el seguimiento como realizado. Especificación en la **sección 3.8** (nueva). Decisiones confirmadas:
+- Frecuencia: **default por `nivel_riesgo`** (días, configurado por tenant) **editable por sujeto**.
+- Canal: **correo + panel en la app** (Google Sheets fuera de este flujo).
+- Cierre: **el usuario marca manualmente "Seguimiento realizado"** — ejecutar la consulta puntual no lo cierra.
+- Descartado también el "monitoreo inverso" por ingesta RSS automática (implicaba extracción IA automática).
+- **Sin decidir:** destinatario de las notificaciones; frecuencia mínima regulatoria (instructivo UIF).
+- Ajuste técnico derivado de lo ya implementado: como `RunSubjectSearchJob` hace `firstOrCreate` por `subject_id`+`url_hash` (una URL = un solo `search_result` por subject), "nuevo desde el último seguimiento" se calcula comparando `search_results.created_at` contra `subjects.ultimo_seguimiento_en`. **No hace falta columna `visto_antes`.**
+
 **Búsqueda por tags implementada (backend + frontend), más dos bugs reales encontrados y corregidos en el camino.** Todo sobre la misma rama sin comitear (`feature/resultados-bajo-demanda` en adelante); commit pendiente al cierre de este bloque. **122 tests backend pasan.**
 
 **1) Búsqueda por tags (feature nueva, plan presentado y confirmado por el usuario, con una corrección suya: el catálogo de tags es *por tenant*, no una lista fija global):**
@@ -102,7 +142,7 @@ Con eso resuelto, se construyó **todo el frontend funcional de Fase 1** de punt
 
 ### Qué se completó (sesión 2026-09-24; el resto de sesiones ver "En qué estábamos" arriba)
 - **Reemplazo de Google CSE por Brave Search API como fuente activa por default:**
-  - `App\Sources\BraveSearchAdapter` nuevo — `GET https://api.search.brave.com/res/v1/web/search`, auth por header `X-Subscription-Token` (no query param), mapea `web.results[].url`, trunca la query a 600 caracteres (límite real de Brave que Google CSE no tenía). Mismo patrón de candado de cuota que `GoogleCseAdapter` pero **mensual** (`BRAVE_SEARCH_MONTHLY_LIMIT`, default 2000). **Corrección del bloque 5:** el supuesto original de "2000 gratis/mes = $0" es falso desde el 12-feb-2026 — ver sección 9.
+  - `App\Sources\BraveSearchAdapter` nuevo — `GET https://api.search.brave.com/res/v1/web/search`, auth por header `X-Subscription-Token` (no query param), mapea `web.results[].url`, trunca la query a 600 caracteres (confirmado en la referencia oficial el 2026-09-25: límite real = 600 caracteres **y 75 palabras**; el límite de palabras todavía no se controla). Mismo patrón de candado de cuota que `GoogleCseAdapter` pero **mensual** (`BRAVE_SEARCH_MONTHLY_LIMIT`, default 2000). **Corrección del bloque 5:** el supuesto original de "2000 gratis/mes = $0" es falso desde el 12-feb-2026 — ver sección 9.
   - Migración nueva (`2026_09_24_112255_add_brave_to_sources_tipo_enum`) agrega `'brave'` al enum de `sources.tipo`. Usa `Schema::table(...)->enum(...)->change()` (schema builder nativo de Laravel 13, sin doctrine/dbal) — **no** SQL crudo `ALTER TABLE ... MODIFY`, porque eso rompe la suite de tests (corre contra SQLite en memoria, `phpunit.xml`) aunque funcione perfecto en MariaDB. Primer intento de esta sesión sí fue con SQL crudo y tronó 52 tests — corregido antes de seguir.
   - `RunSubjectSearchJob::adapterFor()` rutea `'brave'` a `BraveSearchAdapter`; `'cse'`/`GoogleCseAdapter` se quedan intactos en el código, ya no son el default.
   - `IniciarConsultaPuntual` y `vera:demo` actualizados para filtrar/crear `Source` de tipo `brave`, no `cse`.
@@ -152,8 +192,8 @@ Con eso resuelto, se construyó **todo el frontend funcional de Fase 1** de punt
 - Pendiente de sección 3.3: nada más — todo lo de Fase 1 está creado.
 
 **Pipeline (sección 3.4)**
-- `RunSubjectSearchJob`: query con nombre canónico + aliases → adaptador de la `Source` (`'brave'` → `BraveSearchAdapter`, fuente activa por default desde 2026-09-24; `'cse'` → `GoogleCseAdapter`, código intacto pero ya no default — ver "Estatus de sesión") → `search_runs` → encola `FetchArticleJob` por URL. Idempotente (no repite la búsqueda del mismo subject+source el mismo día). Ambos adaptadores imponen su propio tope de cuota con contador atómico en cache antes de llamar al proveedor (diario para Google, mensual para Brave).
-- `FetchArticleJob`: descarga, extrae fecha (meta/JSON-LD/`<time>`, fallback genérico — selectores por medio son Fase 0), hash SHA-256, guarda evidencia en `Storage` (disco `r2` en prod, `local` en dev), descarta si está fuera de `ARTICLE_WINDOW_DAYS`. Encola `ExtractEntitiesJob`.
+- `RunSubjectSearchJob` / `RunTagSearchJob`: query con nombre canónico + aliases (o tags) + `site:` por dominio (`RestriccionDeDominios`) → adaptador de la `Source` (`'brave'` → `BraveSearchAdapter`, fuente activa por default; `'cse'` → `GoogleCseAdapter`, inactivo) → `search_runs` + un `search_results` por resultado (`firstOrCreate` por `subject_id`+`url_hash`) → `VentanaTemporal` marca GAP `fuera_de_ventana` con la `fecha_brave`. **No encola `FetchArticleJob`** (sección 3.7). Idempotente (no repite la búsqueda del mismo subject+source el mismo día). Tope de cuota con contador atómico en cache antes de llamar al proveedor (mensual para Brave, `BRAVE_SEARCH_MONTHLY_LIMIT=1000`). Envía `freshness` con rango explícito, `spellcheck=false` y `search_lang=es`, sin `country`; la query se arma con `LimiteDeQuery` (600 caracteres / 75 palabras) y la metadata queda en `search_runs.metadata_query` (implementado 2026-09-25, duodécimo bloque).
+- `FetchArticleJob`: solo por acción del usuario (`POST /api/resultados/{id}/extraer`), recibe `search_result_id`. Descarga, valida Content-Type y contenido real, extrae fecha (meta/JSON-LD/`<time>`, fallback genérico — selectores por medio son Fase 0), valida ventana con la fecha real, hash SHA-256, evidencia en `Storage` (`r2` en prod, `local` en dev). Reutiliza `Article` ya `completado` sin volver a pagar Anthropic. Fallos → GAP con `gap_motivo`, sin excepción. Encola `ExtractEntitiesJob`.
 - `ExtractEntitiesJob`: limpia HTML, prompt versionado (`resources/prompts/extraction/v1.md`), llama a Haiku, valida con DTOs de `spatie/laravel-data` (`rol` es un enum PHP real — rechaza valores fuera del contrato antes de tocar la BD), escala a Sonnet si baja confianza o roles cruzados, crea `mentions`, encola `MatchMentionsJob`. Idempotente; `failed()` marca `estado_extraccion = fallido`.
 - `MatchMentionsJob`: recorre todos los tenants (`tenancy()->runForMultiple()`), busca en Meilisearch (Scout, `Subject` es `Searchable`) filtrado por `tenant_id`, guarda cada hit en `matches` como `pendiente`. **Umbral/rarity gate sin calibrar a propósito** (sección 9 — "hasta entonces todo match es pendiente", textual).
 - **Resolución de coincidencias (dos pasos, sección 1/3.2, nuevo 2026-09-24):** `POST /api/matches/{id}/proponer` (`analista`/`oficial_cumplimiento`/`admin`) guarda una sugerencia en `propuesta_estado`/`propuesta_por`/`propuesta_en`, sin tocar `estado`. `POST /api/matches/{id}/resolver` (solo `oficial_cumplimiento`/`admin`) fija `estado` en firme — puede coincidir con la propuesta o no. Ambos rechazan actuar sobre un match que ya no está `pendiente` (422). `MentionMatch` ahora tiene `LogsActivity` (sección 7: toda resolución queda auditada).
@@ -218,9 +258,20 @@ Con eso resuelto, se construyó **todo el frontend funcional de Fase 1** de punt
 - [ ] **Calidad de datos de Brave: snippets/títulos pierden tildes/eñes** en algunas páginas (`historico.elsalvador.com`, `elsalvador.com`) — ej. "años" → "aos". Encontrado verificando el frontend nuevo, no es un bug de la UI ni de `BraveSearchAdapter` (solo hace `strip_tags`). Falta investigar si es de la página fuente o de cómo Brave la indexó.
 - [x] ~~Decisión del usuario: evidencia adjunta en captura manual~~ — **PDF, obligatorio** (2026-09-24).
 - [x] ~~Decisión del usuario: backfill de subjects previos~~ — **no hace falta, eran datos de prueba en dev** (2026-09-24).
-- [x] ~~Decisión del usuario: si Fase 2 también deja resultados en `nuevo`~~ — **sí, mismo flujo manual siempre** (2026-09-24).
+- [x] ~~Implementar `freshness` en `BraveSearchAdapter`~~ — **hecho 2026-09-25** (duodécimo bloque).
+- [x] ~~Verificar el límite real de la query de Brave~~ — **resuelto 2026-09-25:** 600 caracteres y 75 palabras (referencia oficial).
+- [x] ~~Parámetros de Brave (`spellcheck=false`, `search_lang=es`, 75 palabras, metadata en `search_runs`)~~ — **hecho 2026-09-25** (duodécimo bloque).
+- [x] ~~Revisar qué parámetros enviaba `BraveSearchAdapter`~~ — solo `q` truncado a 600 caracteres; reemplazado.
+- [x] ~~Decisión del usuario: valor de `country`~~ — **no se envía** (2026-09-25).
+- [x] ~~Verificación manual contra Brave real~~ — **hecha 2026-09-25** (ver duodécimo bloque; sin `altered`, `site:` aplicados).
+- [ ] **Hueco de cobertura conocido — laprensagrafica.com** (aceptado por el usuario 2026-09-25, opción 1): el índice de Brave para LPG está atrasado meses; con `freshness` de 60 días LPG no aporta resultados. Incluirlo en el informe de Fase 0. Retomar con las opciones 2/3 del duodécimo bloque cuando el usuario lo decida.
+- [ ] **Fase 0 — comillas:** en la verificación real `search_operators.cleaned_query` vino sin comillas y los resultados no contenían el nombre. Medir con los 20 nombres de Fase 0 si las comillas se respetan (comparar contra `news/search` y contra la query sin `site:`).
+- [x] ~~Decisión del usuario: si Fase 2 también deja resultados en `nuevo`~~ — **reemplazada el 2026-09-25:** en Fase 2 no hay consultas automáticas; es una agenda de seguimiento manual (sección 3.8).
+- [ ] **Implementar sección 3.8 (Fase 2)**: campos de seguimiento en `subjects`, configuración de días por nivel en el tenant, job diario sin llamadas externas, `SendAlertJob` con resumen agrupado, SMTP, panel de seguimientos, botón "Seguimiento realizado", filtro de resultados nuevos desde el último seguimiento. Presentar plan antes de codificar.
+- [ ] **Decisión del usuario:** destinatario de las notificaciones de seguimiento (solo `oficial_cumplimiento`, también `analista`, o responsable asignado por subject).
+- [ ] **Verificar:** frecuencia mínima de revisión exigida por el instructivo UIF por nivel de riesgo — si existe, los días configurables no deben poder quedar por debajo.
 - [x] ~~Decisión del usuario: valor real de `BRAVE_SEARCH_MONTHLY_LIMIT`~~ — **1000** (2026-09-24, con el precio real de Brave confirmado por el usuario: $5/1000 requests, $5 crédito/mes).
-- [ ] **Decisión del usuario, sin contestar todavía:** ¿ventana temporal distinta para `ARTICLE_WINDOW_DAYS` (hoy 30)? Se preguntó junto con las otras 4 pero no se resolvió explícitamente — se mantiene 30 hasta nueva instrucción.
+- [x] ~~Decisión del usuario: ventana `ARTICLE_WINDOW_DAYS`~~ — **60 días** (2026-09-25), aplicado en `.env`, `.env.example` y default de `config/vera.php`.
 - [ ] Dónde va la atribución pública "Powered by Brave" (requisito para conservar el crédito mensual) — sin decidir.
 - [ ] Confirmar con Brave derechos de almacenamiento de resultados (título/snippet en `search_results`, ahora más relevante porque sí se van a guardar).
 - [x] ~~Que el usuario pruebe el frontend real~~ — hecho: probado por el usuario, encontró 2 problemas reales (feedback poco visible, `lanoticiasv.com` faltante), ambos corregidos y re-verificados con el caso real.
@@ -276,7 +327,7 @@ Con eso resuelto, se construyó **todo el frontend funcional de Fase 1** de punt
 Permitir que un oficial de cumplimiento:
 
 1. Consulte puntualmente si una persona (natural o jurídica) aparece en medios de comunicación salvadoreños y fuentes oficiales vinculada a procesos judiciales (hurto, estafa, extorsión, lavado, narcotráfico, corrupción, etc.).
-2. Mantenga una lista de vigilancia (clientes, empleados, proveedores) con monitoreo continuo y alertas por coincidencias nuevas.
+2. Mantenga una lista de vigilancia (clientes, empleados, proveedores) con agenda de seguimiento: el sistema notifica cuándo toca revisar a cada persona y el usuario ejecuta la revisión manualmente (sección 3.8). Sin consultas automáticas.
 3. Cruce nombres contra listas de sanciones internacionales (OFAC SDN, ONU consolidada, UE).
 4. Registre evidencia auditable (snapshot + hash + timestamp) y la resolución humana de cada coincidencia (confirmada / falso positivo / homónimo).
 5. Genere reportes exportables por persona, periodo y nivel de riesgo.
@@ -352,11 +403,15 @@ plans                      (básico, profesional, empresarial; límites de perso
 subscriptions              (tenant, plan, estado, ciclo)
 users                      (tenant_id, roles)
 subjects                   (persona vigilada: tenant_id, tipo natural/jurídica, nombre canónico,
-                            documento opcional, nivel_riesgo, activo)
+                            documento opcional, nivel_riesgo, activo,
+                            frecuencia_seguimiento_dias (nullable = usa default del tenant por nivel),
+                            proximo_seguimiento_en, ultimo_seguimiento_en, ultimo_seguimiento_por)
+                            ← campos de seguimiento: NUEVO, sección 3.8, pendiente de implementar
 subject_aliases            (variantes de nombre por subject)
 sources                    (medio/fuente: nombre, tipo [brave|cse|rss|oficial|sanciones], config, activo, global)
 search_runs                (ejecución de búsqueda: subject_id (NULLABLE desde busqueda por tags),
-                            source_id, query, tags[] (NUEVO), dias_atras (NUEVO), resultados, costo)
+                            source_id, query, metadata_query (JSON: proveedor + terminos_omitidos,
+                            2026-09-25), tags[] (NUEVO), dias_atras (NUEVO), resultados, costo)
 search_results             (IMPLEMENTADO 2026-09-24, sección 3.7 — un registro por resultado de
                             búsqueda: search_run_id, subject_id (NULLABLE - null si vino de una
                             busqueda por tags, sin subject_id el tenant_id ya no se deriva de un
@@ -381,7 +436,7 @@ matches                    (mention_id, subject_id, score_meilisearch (NULLABLE 
 sanction_lists             (ofac_sdn, un_consolidated, eu; versión, fecha_importación)
 sanction_entries           (lista, nombre, aliases[], tipo, programa, país, raw_json)
 sanction_matches           (subject_id, sanction_entry_id, score, estado, resolución)
-alerts                     (tenant_id, tipo, referencia polimórfica, canal, enviado_en)
+alerts                     (tenant_id, tipo [seguimiento_pendiente|...], referencia polimórfica, canal, enviado_en)
 reports                    (tenant_id, tipo, parámetros, generado_por, path)
 activity_log               (spatie)
 ```
@@ -390,15 +445,15 @@ activity_log               (spatie)
 
 Colas y prioridad: `alerts` > `matching` > `extraction` > `fetch` > `search` > `imports`.
 
-1. `RunSubjectSearchJob` — por subject y source: construye query (nombre canónico + aliases + `site:` por medio), llama Brave (o RSS/oficial), persiste `search_runs` y **un `search_results` por resultado en estado `nuevo`. NO encola `FetchArticleJob`** (cambio 2026-09-24, sección 3.7).
+1. `RunSubjectSearchJob` — por subject y source: construye query (nombre canónico + aliases + `site:` por medio), llama Brave **con `freshness=AAAA-MM-DDtoAAAA-MM-DD` calculado desde la ventana de la búsqueda, `spellcheck=false`, `search_lang=es` y sin `country`** (implementado 2026-09-25; `RunTagSearchJob` igual, con `dias_atras`); la query respeta 600 caracteres y 75 palabras, persiste `search_runs` y **un `search_results` por resultado en estado `nuevo`. NO encola `FetchArticleJob`** (cambio 2026-09-24, sección 3.7).
 2. `FetchArticleJob` — **solo se encola por acción del analista** (`POST /api/resultados/{id}/extraer`). Recibe `search_result_id`. Descarga HTML, extrae `fecha_publicacion` de metadatos (`article:published_time`, JSON-LD, `<time>`), calcula SHA-256, sube snapshot a R2, persiste `articles`. Artículos fuera de la ventana configurada, 403, timeout, contenido vacío o no-HTML → marca el `search_result` como `gap` con `gap_motivo` y termina sin excepción (un GAP es un resultado válido, no un fallo de job).
 3. `ExtractEntitiesJob` — envía texto limpio a Claude Haiku con esquema JSON estricto; valida con `spatie/laravel-data`; persiste `extractions` y `mentions`. Si `confianza < umbral` → reencola con Sonnet 5. Al terminar marca el `search_result` como `extraido` (≥1 persona) o `sin_menciones` (lista vacía).
 4. `MatchMentionsJob` — por cada mention, consulta Meilisearch (índice `subjects`, filtro `tenant_id`) con tolerancia a errores; aplica normalización (unaccent, minúsculas, orden de tokens) y *rarity gate* por frecuencia de apellidos; persiste `matches` en estado `pendiente`.
-5. `SendAlertJob` — correo (y Google Sheets si está configurado) al oficial de cumplimiento del tenant.
+5. `SendAlertJob` — correo de resumen diario por tenant con los seguimientos vencidos (sección 3.8). Un correo agrupado, no uno por sujeto. Google Sheets no aplica a este flujo.
 6. `ImportSanctionListsJob` — semanal; descarga OFAC SDN (CSV/XML), ONU consolidada (XML), UE (XML); reindexa en Meilisearch (`sanction_entries`); ejecuta `MatchSanctionsJob` para todos los subjects activos.
 
 Scheduler:
-- Monitoreo continuo diario, priorizado por `nivel_riesgo` para no agotar la cuota mensual de Brave (`BRAVE_SEARCH_MONTHLY_LIMIT`). **Confirmado 2026-09-24:** el monitoreo continuo de Fase 2 usa exactamente el mismo flujo manual de la sección 3.7 — deja los resultados en `nuevo` para que el analista decida, nunca procesa automático. No hace falta una rama de lógica distinta para Fase 2; el mismo `RunSubjectSearchJob` sirve para ambas.
+- **No existe monitoreo automático contra servicios externos de pago (decisión 2026-09-25, reemplaza la del 2026-09-24).** `RunSubjectSearchJob` solo se ejecuta por clic del usuario. El único job diario de Fase 2 consulta la BD propia: detecta `subjects` con `proximo_seguimiento_en <= hoy`, crea `alerts` tipo `seguimiento_pendiente` y encola `SendAlertJob`. Cero llamadas a Brave o Anthropic (sección 3.8).
 - Tope de cuota por proveedor impuesto en el adaptador (ya existe para Brave y Google CSE).
 - Importación de sanciones: semanal.
 
@@ -477,16 +532,50 @@ Reglas:
 
 **Implementación:** dos PRs (convención de Git): backend primero (cambia el contrato), frontend después. Antes de codificar cada uno, presentar el plan (migraciones/endpoints o componentes) y esperar confirmación del usuario.
 - **Backend: IMPLEMENTADO 2026-09-24.** 5 migraciones (`search_results` nueva; `mentions`/`matches` con columnas nuevas/nullable para captura manual), 3 enums (`EstadoSearchResult`, `GapMotivo`, `OrigenMention`), modelo `SearchResult`, contrato `SourceAdapterInterface::buscar()` cambiado a `{resultados[], costo}`, `RunSubjectSearchJob`/`FetchArticleJob` reescritos (ya no descargan automático — el fetch solo corre cuando el analista pide "Sacar información de noticia"), `ExtractEntitiesJob` actualizado para cerrar el ciclo de `search_results.estado`, `SearchResultPolicy` (captura manual solo `admin`/`oficial_cumplimiento`), 3 Actions nuevas (`ExtraerResultado`, `DescartarResultado`, `CapturaManual`), `EVIDENCIA_MANUAL_DISK` configurable independiente de `FILESYSTEM_DISK` (default `local`, dev y producción). 101 tests en verde (233 assertions), sin regresiones. Detalle completo en "Estatus de sesión".
-- **Frontend: pendiente.** Es el siguiente paso — no empezar sin presentar el plan de componentes primero.
+- **Frontend: IMPLEMENTADO 2026-09-24**, verificado end-to-end con Playwright y datos reales (detalle en "Estatus de sesión", séptimo bloque).
 
 **Impacto esperado:** el gasto en Anthropic pasa a ser bajo demanda (en la prueba de `Juan Carlos Pérez` se gastaron 22 llamadas en artículos irrelevantes).
+
+### 3.8 Seguimiento de lista de vigilancia (Fase 2 — definido 2026-09-25, pendiente de implementar)
+
+**Principio:** el sistema agenda y notifica; el usuario decide y ejecuta. Ninguna consulta a Brave ni extracción IA ocurre sin clic del usuario.
+
+**Flujo:**
+1. Cada subject activo tiene `proximo_seguimiento_en`.
+2. Job diario (Scheduler, sin llamadas externas) detecta vencidos → `alerts` tipo `seguimiento_pendiente` → `SendAlertJob` (resumen agrupado por tenant). Idempotente: no repite la alerta para el mismo subject y vencimiento.
+3. El usuario ve los vencidos en el correo y en el panel "Seguimientos pendientes".
+4. Abre el subject y, a su criterio, ejecuta "Consulta puntual" (flujo 3.7 sin cambios) o no.
+5. **Marca manualmente "Seguimiento realizado"** (observación opcional). Ejecutar la consulta puntual NO lo cierra.
+6. Al marcar: `ultimo_seguimiento_en`/`ultimo_seguimiento_por` = ahora/usuario; `proximo_seguimiento_en` = ahora + frecuencia efectiva. Registro en `activity_log` (observación en las propiedades).
+
+**Frecuencia:**
+- Default por `nivel_riesgo`, en días, configurado por el tenant (mecanismo de almacenamiento de la configuración del tenant: proponer en el plan y confirmar).
+- Editable por subject (`frecuencia_seguimiento_dias`); `null` = usa el default de su nivel.
+- Frecuencia efectiva = la del subject si existe, si no la del nivel. Cambiar `nivel_riesgo` o la frecuencia recalcula `proximo_seguimiento_en` desde `ultimo_seguimiento_en` (o desde la fecha de alta si nunca tuvo seguimiento).
+- Todo cambio de frecuencia o nivel queda en `activity_log` (regla de la sección 7 sobre la lista de vigilancia).
+
+**Resultados nuevos desde el último seguimiento:**
+- `RunSubjectSearchJob` ya hace `firstOrCreate` por `subject_id`+`url_hash`: una URL ya vista no crea registro nuevo ni resetea su estado.
+- "Nuevo desde el último seguimiento" = `search_results.created_at > subjects.ultimo_seguimiento_en`. Sin columna adicional.
+- La vista del subject destaca esos resultados y permite filtrarlos (se suma a `FiltroEstado`).
+
+**Frontend:**
+- Panel "Seguimientos pendientes": vencidos y próximos, ordenados por vencimiento y `nivel_riesgo`, con acceso directo al subject.
+- En `/subjects/$subjectId`: último y próximo seguimiento, frecuencia efectiva (indicando si es default o personalizada), botón "Seguimiento realizado".
+- Configuración del tenant (solo `admin`): días por nivel de riesgo.
+
+**Permisos (propuesta derivada de la sección 3.2, confirmar en el plan):** marcar seguimiento realizado y editar frecuencia por subject: `admin`, `oficial_cumplimiento`, `analista`. Configurar defaults del tenant: `admin`. `lectura`: solo ver.
+
+**Fuera de alcance:** búsquedas por tags (`search_results` sin `subject_id`) no participan en la agenda de seguimiento.
+
+**Implementación:** backend y frontend en PRs separados; presentar plan antes de codificar. Requiere SMTP configurado.
 
 ---
 
 ## 4. Fuentes iniciales
 
 Medios (vía Brave Search API, `site:` por dominio o combinado en la query — ver "Estatus de sesión" sobre el cambio desde Google CSE):
-- laprensagrafica.com
+- laprensagrafica.com (**hueco conocido 2026-09-25:** Brave casi no la tiene indexada — nada reciente; su WAF responde 403 a VERA en notas, RSS y sitemap. Ver duodécimo bloque)
 - elsalvador.com
 - diarioelmundo.com
 - lapagina.com.sv
@@ -524,9 +613,11 @@ Resultado esperado: informe corto en `docs/poc/` con métricas y decisiones.
 - Sanciones OFAC/ONU/UE.
 - Frontend: login, consulta puntual, resultado, evidencia, resolución.
 
-### Fase 2 — Monitoreo continuo
+### Fase 2 — Seguimiento de lista de vigilancia (sin monitoreo automático, ver 3.8)
 - Lista de vigilancia, aliases, nivel de riesgo.
-- Scheduler diario priorizado, alertas por correo, Google Sheets opcional.
+- Agenda de seguimiento: frecuencia default por nivel de riesgo, editable por subject.
+- Job diario solo sobre BD propia → alertas por correo (resumen agrupado) + panel de seguimientos pendientes.
+- Cierre manual del seguimiento por el usuario; resultados nuevos desde el último seguimiento destacados.
 - Dashboard de coincidencias pendientes.
 
 ### Fase 3 — SaaS
@@ -568,6 +659,7 @@ Resultado esperado: informe corto en `docs/poc/` con métricas y decisiones.
 - No generar código de pago, facturación ni integración PayPal hasta Fase 3.
 - No usar Slack, Postgres, SQLite, ElasticSearch, Next.js, Inertia ni Livewire.
 - Ante ambigüedad en reglas de negocio (umbrales de matching, ventana temporal, roles), preguntar antes de asumir.
+- Ningún job programado llama a servicios externos de pago (Brave, Anthropic). Toda consulta o extracción la dispara una acción del usuario (secciones 3.7 y 3.8).
 - Cada job debe ser idempotente y reintentable.
 - Registrar en `activity_log` toda resolución de coincidencia y todo cambio en lista de vigilancia.
 - Mantener el presupuesto de RAM: no agregar contenedores.
@@ -588,7 +680,7 @@ GOOGLE_CSE_API_KEY, GOOGLE_CSE_CX, GOOGLE_CSE_DAILY_LIMIT=100 (ya no es la fuent
 ANTHROPIC_API_KEY, ANTHROPIC_MODEL_FAST=claude-haiku-4-5-20251001, ANTHROPIC_MODEL_ESCALATION=claude-sonnet-5
 EXTRACTION_CONFIDENCE_THRESHOLD=0.6
 MATCH_SCORE_THRESHOLD (definir en Fase 0)
-ARTICLE_WINDOW_DAYS (por defecto 30 para consulta puntual; configurable por tenant)
+ARTICLE_WINDOW_DAYS=60 (confirmado 2026-09-25, antes 30; también es el freshness de Brave en consulta puntual; configurable por tenant)
 FILESYSTEM_DISK=r2, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 MAIL_MAILER=smtp, MAIL_HOST, MAIL_PORT, MAIL_USERNAME, MAIL_PASSWORD
 GOOGLE_SHEETS_CREDENTIALS_JSON (opcional)
@@ -601,11 +693,16 @@ SANCTUM_STATEFUL_DOMAINS, SESSION_DOMAIN, FRONTEND_URL
 
 - Homónimos: umbral de Meilisearch y *rarity gate* se calibran en Fase 0 con datos reales; hasta entonces todo match es `pendiente`.
 - Protección de datos: Ley de Protección de Datos Personales (2024). Definir política de retención por tenant y registro de base legal (obligación AML).
-- Cuota de búsqueda (Brave Search, antes Google CSE): el scheduler nunca debe superar el límite configurado (`BRAVE_SEARCH_MONTHLY_LIMIT`); excedentes se difieren por prioridad. El candado duro ya existe a nivel de adaptador (`BraveSearchAdapter::reservarCupoMensual()`) — lo que falta de esto es la lógica de *priorización* del scheduler en sí, que todavía no existe (ver "Pendiente" en Estatus de sesión).
+- Cuota de búsqueda (Brave Search, antes Google CSE): desde el 2026-09-25 ningún proceso automático consume Brave; todo consumo es por acción del usuario. El candado duro `BraveSearchAdapter::reservarCupoMensual()` sigue siendo el único tope. La priorización por scheduler quedó descartada (sección 3.8).
 - Brave — derechos de almacenamiento: Brave exige un plan con derechos de almacenamiento para guardar resultados total o parcialmente. `search_runs` ya guardaba URLs y `search_results` (3.7) guardará título y snippet. Confirmar con Brave por escrito antes de tener clientes pagando.
 - Brave — costo: sin tope de gasto del proveedor (esto sigue siendo cierto); **`BRAVE_SEARCH_MONTHLY_LIMIT` ya se resolvió: 1000** (confirmado 2026-09-24, coincide exacto con el crédito gratis mensual — precio real confirmado por el usuario desde la propia página de precios de Brave: $5/1000 requests, $5 de crédito automático cada mes, 50 req/seg). Dónde va la atribución pública "Powered by Brave" sigue sin decidir — falta antes de producción si se quiere seguir conservando ese crédito.
 - ~~Captura manual sin adjunto~~ — **resuelto 2026-09-24: sí lleva adjunto, en PDF** (ver sección 3.7 "Captura manual"). Ya no es un riesgo abierto.
-- Ventana temporal: `ARTICLE_WINDOW_DAYS=30` en consulta puntual deja fuera condenas de hace meses o años; con el flujo 3.7 esos artículos quedan como GAP (`fuera_de_ventana`). **Sigue sin decidirse un valor distinto** — se preguntó junto con lo demás el 2026-09-24 pero no se contestó explícitamente; se mantiene 30 hasta que el usuario diga otra cosa.
+- Seguimiento manual (3.8): la detección depende de que el usuario atienda las notificaciones. El sistema no lo compensa, pero deja constancia en `activity_log` de alertas enviadas, seguimientos realizados y vencidos sin atender (útil ante revisión de la UIF).
+- `freshness` de Brave: filtra por antigüedad de la página (fecha de publicación o de última modificación reportada por el contenido). Puede colar artículos viejos modificados recientemente (los atrapa `VentanaTemporal`) y excluir páginas sin fecha detectable por Brave. Con el filtro en origen, lo que queda fuera de la ventana ya no se ve ni como GAP.
+- `spellcheck` de Brave activo por default: altera nombres propios y Brave busca con la query alterada. Mientras no se envíe `spellcheck=false`, los resultados de nombres poco comunes no son confiables (afecta la prueba de recall de Fase 0).
+- `country` no se envía (default de Brave: `US`): `SV` no es un valor aceptado; el ranking puede sesgarse, pero los `site:` restringen los medios. `search_lang=es` sí se envía.
+- Ventana temporal: `ARTICLE_WINDOW_DAYS=60` (decidido 2026-09-25). Con `freshness` en origen, condenas de hace más de 60 días ya no aparecen en la consulta puntual; la búsqueda por tags admite `dias_atras` propio (máx. 365).
+- Cobertura por medio depende del índice de Brave: laprensagrafica.com prácticamente no aporta resultados recientes (hallazgo 2026-09-25). Un "sin resultados" de VERA no garantiza que un medio no haya publicado sobre la persona — relevante para cómo se presenta el resultado al oficial de cumplimiento y ante la UIF.
 - Marca: verificar dominio y registro en CNR (clases 42 y 45) antes de identidad visual.
 
 ---

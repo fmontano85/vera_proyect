@@ -116,3 +116,21 @@ it('no es idempotente si los tags son distintos, aunque sea el mismo dia', funct
 
     Http::assertSentCount(2);
 });
+
+it('envia a Brave freshness con dias_atras de la busqueda, o ARTICLE_WINDOW_DAYS si no trae', function () {
+    config(['vera.article_window_days' => 60]);
+    Carbon\Carbon::setTestNow('2026-09-25 10:00:00');
+
+    $tenant = Tenant::create();
+    $source = Source::factory()->create(['tipo' => 'brave']);
+    Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
+
+    tenancy()->initialize($tenant);
+    (new RunTagSearchJob(['hurto'], $source->id, diasAtras: 7))->handle();
+    (new RunTagSearchJob(['estafa'], $source->id))->handle();
+    tenancy()->end();
+
+    Http::assertSent(fn ($request) => $request['freshness'] === '2026-09-18to2026-09-25');
+    Http::assertSent(fn ($request) => $request['freshness'] === '2026-07-27to2026-09-25');
+    Carbon\Carbon::setTestNow();
+});

@@ -7,6 +7,9 @@ namespace App\Actions\TagSearches;
 use App\Jobs\RunTagSearchJob;
 use App\Models\SearchTag;
 use App\Models\Source;
+use App\Services\Search\LimiteDeQuery;
+use Illuminate\Database\Eloquent\Collection;
+use InvalidArgumentException;
 use RuntimeException;
 
 /**
@@ -40,7 +43,7 @@ class IniciarBusquedaPorTags
         $sources = Source::query()
             ->where('activo', true)
             ->where('tipo', 'brave')
-            ->pluck('id');
+            ->get();
 
         if ($sources->isEmpty()) {
             throw new RuntimeException(
@@ -48,10 +51,38 @@ class IniciarBusquedaPorTags
             );
         }
 
-        foreach ($sources as $sourceId) {
-            RunTagSearchJob::dispatch($tags->all(), $sourceId, $diasAtras);
+        $this->validarLimiteDeQuery($tags->sort()->values()->all(), $sources);
+
+        foreach ($sources as $source) {
+            RunTagSearchJob::dispatch($tags->all(), $source->id, $diasAtras);
         }
 
-        return $sources->all();
+        return $sources->pluck('id')->all();
+    }
+
+    /**
+     * Limite de Brave (600 caracteres / 75 palabras): en busqueda por tags
+     * no se omite nada en silencio - se rechaza para que el usuario elija
+     * menos tags (decision del usuario 2026-09-25). Se valida contra cada
+     * source porque cada una puede traer su propia lista de dominios.
+     *
+     * @param  list<string>  $tagsOrdenados
+     * @param  Collection<int, Source>  $sources
+     */
+    private function validarLimiteDeQuery(array $tagsOrdenados, Collection $sources): void
+    {
+        foreach ($sources as $source) {
+            try {
+                $omitidos = RunTagSearchJob::construirQuery($tagsOrdenados, $source)['omitidos'];
+            } catch (InvalidArgumentException) {
+                $omitidos = $tagsOrdenados;
+            }
+
+            if ($omitidos !== []) {
+                throw new RuntimeException(
+                    'Los tags elegidos no caben en el limite de Brave ('.LimiteDeQuery::MAX_CARACTERES.' caracteres / '.LimiteDeQuery::MAX_PALABRAS.' palabras). Elige menos tags. No caben: '.implode(', ', $omitidos).'.'
+                );
+            }
+        }
     }
 }

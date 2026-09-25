@@ -8,6 +8,7 @@ use App\Models\SearchResult;
 use App\Models\SearchRun;
 use App\Models\Source;
 use App\Models\Subject;
+use App\Services\Search\LimiteDeQuery;
 use App\Services\Search\RestriccionDeDominios;
 use App\Services\Search\VentanaTemporal;
 use App\Sources\BraveSearchAdapter;
@@ -61,13 +62,20 @@ class RunSubjectSearchJob implements ShouldQueue
             return $existente;
         }
 
-        $query = $this->construirQuery($subject, $source);
-        $resultado = $this->adapterFor($source)->buscar($query);
+        ['query' => $query, 'omitidos' => $omitidos] = $this->construirQuery($subject, $source);
+
+        // Filtro temporal en origen (decimo bloque): la consulta puntual
+        // usa ARTICLE_WINDOW_DAYS.
+        $resultado = $this->adapterFor($source)->buscar($query, (int) config('vera.article_window_days'));
 
         $searchRun = SearchRun::create([
             'subject_id' => $subject->id,
             'source_id' => $source->id,
             'query' => $query,
+            'metadata_query' => [
+                'proveedor' => $resultado['metadata'],
+                'terminos_omitidos' => $omitidos,
+            ],
             'resultados' => $resultado['resultados'],
             'costo' => $resultado['costo'],
         ]);
@@ -105,16 +113,22 @@ class RunSubjectSearchJob implements ShouldQueue
         VentanaTemporal::marcarSiFueraDeVentanaPorFechaBrave($resultado);
     }
 
-    private function construirQuery(Subject $subject, Source $source): string
+    /**
+     * Nombre canonico primero: si la query no cabe en el limite de Brave,
+     * LimiteDeQuery omite aliases desde el final, nunca el canonico ni
+     * los 'site:'. Aliases ordenados por id (orden de alta) para que el
+     * recorte sea determinista: se omiten primero los mas recientes.
+     *
+     * @return array{query: string, omitidos: list<string>}
+     */
+    private function construirQuery(Subject $subject, Source $source): array
     {
         $nombres = collect([$subject->nombre_canonico])
-            ->merge($subject->aliases->pluck('nombre'))
+            ->merge($subject->aliases->sortBy('id')->pluck('nombre'))
             ->unique()
-            ->map(fn (string $nombre) => "\"{$nombre}\"");
+            ->values();
 
-        $dominios = RestriccionDeDominios::sitesPara($source);
-
-        return '('.$nombres->implode(' OR ').') ('.$dominios->implode(' OR ').')';
+        return LimiteDeQuery::construir($nombres, RestriccionDeDominios::sitesPara($source));
     }
 
     private function adapterFor(Source $source): SourceAdapterInterface

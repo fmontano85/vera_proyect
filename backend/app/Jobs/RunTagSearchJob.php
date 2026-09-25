@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\SearchResult;
 use App\Models\SearchRun;
 use App\Models\Source;
+use App\Services\Search\LimiteDeQuery;
 use App\Services\Search\RestriccionDeDominios;
 use App\Services\Search\VentanaTemporal;
 use App\Sources\BraveSearchAdapter;
@@ -63,12 +64,23 @@ class RunTagSearchJob implements ShouldQueue
             return $existente;
         }
 
-        $query = $this->construirQuery($tagsOrdenados, $source);
-        $resultado = $this->adapterFor($source)->buscar($query);
+        ['query' => $query, 'omitidos' => $omitidos] = self::construirQuery($tagsOrdenados, $source);
+
+        // Filtro temporal en origen (decimo bloque): dias_atras de la
+        // busqueda, o ARTICLE_WINDOW_DAYS si no trae - mismo criterio que
+        // VentanaTemporal::diasPara().
+        $resultado = $this->adapterFor($source)->buscar(
+            $query,
+            $this->diasAtras ?? (int) config('vera.article_window_days'),
+        );
 
         $searchRun = SearchRun::create([
             'source_id' => $source->id,
             'query' => $query,
+            'metadata_query' => [
+                'proveedor' => $resultado['metadata'],
+                'terminos_omitidos' => $omitidos,
+            ],
             'tags' => $tagsOrdenados,
             'dias_atras' => $this->diasAtras,
             'resultados' => $resultado['resultados'],
@@ -111,14 +123,18 @@ class RunTagSearchJob implements ShouldQueue
     }
 
     /**
-     * @param  list<string>  $tags
+     * Publico y estatico: IniciarBusquedaPorTags lo usa para rechazar con
+     * 422 ANTES de encolar si algun tag no cabe en el limite de Brave
+     * (decision del usuario: que elija menos tags). Aqui se mantiene
+     * como defensa - si igual sobran tags, se omiten desde el final y
+     * quedan registrados en metadata_query.
+     *
+     * @param  list<string>  $tags  ya ordenados
+     * @return array{query: string, omitidos: list<string>}
      */
-    private function construirQuery(array $tags, Source $source): string
+    public static function construirQuery(array $tags, Source $source): array
     {
-        $tagsQuery = collect($tags)->map(fn (string $tag) => "\"{$tag}\"");
-        $dominios = RestriccionDeDominios::sitesPara($source);
-
-        return '('.$tagsQuery->implode(' OR ').') ('.$dominios->implode(' OR ').')';
+        return LimiteDeQuery::construir(collect($tags), RestriccionDeDominios::sitesPara($source));
     }
 
     private function adapterFor(Source $source): SourceAdapterInterface

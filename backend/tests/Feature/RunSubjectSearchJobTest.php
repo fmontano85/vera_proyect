@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\EstadoSearchResult;
+use App\Enums\GapMotivo;
 use App\Jobs\FetchArticleJob;
 use App\Jobs\RunSubjectSearchJob;
 use App\Models\SearchResult;
@@ -10,6 +11,7 @@ use App\Models\SearchRun;
 use App\Models\Source;
 use App\Models\Subject;
 use App\Models\SubjectAlias;
+use App\Services\Search\LimiteDeQuery;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Stancl\Tenancy\Database\Models\Tenant;
@@ -139,7 +141,7 @@ it('no duplica ni resetea un search_result cuando la misma url vuelve a salir en
 
     tenancy()->initialize($tenant);
     $resultado = SearchResult::where('subject_id', $subject->id)->sole();
-    $resultado->forceFill(['estado' => \App\Enums\EstadoSearchResult::Extraido])->save();
+    $resultado->forceFill(['estado' => EstadoSearchResult::Extraido])->save();
     tenancy()->end();
 
     // Otro dia -> ya no es idempotente a nivel de SearchRun, corre de
@@ -150,7 +152,7 @@ it('no duplica ni resetea un search_result cuando la misma url vuelve a salir en
     tenancy()->initialize($tenant);
     expect(SearchResult::where('subject_id', $subject->id)->count())->toBe(1);
     // El estado que ya tenia (procesado por el analista) no se pisa.
-    expect($resultado->refresh()->estado)->toBe(\App\Enums\EstadoSearchResult::Extraido);
+    expect($resultado->refresh()->estado)->toBe(EstadoSearchResult::Extraido);
     tenancy()->end();
 
     Carbon\Carbon::setTestNow();
@@ -207,7 +209,7 @@ it('marca GAP fuera_de_ventana de una vez si Brave ya trae una fecha vieja, sin 
     $sinFecha = SearchResult::where('url', 'https://medio.example/nota-sin-fecha')->sole();
 
     expect($vieja->estado)->toBe(EstadoSearchResult::Gap)
-        ->and($vieja->gap_motivo)->toBe(\App\Enums\GapMotivo::FueraDeVentana)
+        ->and($vieja->gap_motivo)->toBe(GapMotivo::FueraDeVentana)
         ->and($reciente->estado)->toBe(EstadoSearchResult::Nuevo)
         // Sin fecha de Brave no se puede saber si esta fuera de ventana -
         // se deja pasar, el chequeo real (con la fecha del articulo) lo
@@ -226,4 +228,47 @@ it('lanza excepcion para una fuente con tipo de adaptador no implementado', func
 
     expect(fn () => (new RunSubjectSearchJob($subject->id, $source->id))->handle())
         ->toThrow(InvalidArgumentException::class);
+});
+
+it('envia a Brave freshness con la ventana ARTICLE_WINDOW_DAYS de la consulta puntual', function () {
+    config(['vera.article_window_days' => 60]);
+    Carbon\Carbon::setTestNow('2026-09-25 10:00:00');
+
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create(['nombre_canonico' => 'Juan Perez']);
+    tenancy()->end();
+
+    $source = Source::factory()->create(['tipo' => 'brave']);
+    Http::fake(['api.search.brave.com/*' => Http::response(['web' => ['results' => []]], 200)]);
+
+    (new RunSubjectSearchJob($subject->id, $source->id))->handle();
+
+    Http::assertSent(fn ($request) => $request['freshness'] === '2026-07-27to2026-09-25');
+    Carbon\Carbon::setTestNow();
+});
+
+it('guarda en metadata_query lo que Brave reporta de la query y los aliases omitidos por el limite de palabras', function () {
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create(['nombre_canonico' => 'Juan Carlos Perez']);
+    // 12 aliases de 5 palabras: con los 7 site: por default se pasa de 75.
+    foreach (range(1, 12) as $i) {
+        SubjectAlias::factory()->for($subject, 'subject')->create(['nombre' => "alias{$i} uno dos tres cuatro"]);
+    }
+    tenancy()->end();
+
+    $source = Source::factory()->create(['tipo' => 'brave']);
+    Http::fake(['api.search.brave.com/*' => Http::response([
+        'query' => ['original' => 'x', 'altered' => null, 'search_operators' => ['applied' => true]],
+        'web' => ['results' => []],
+    ], 200)]);
+
+    $searchRun = (new RunSubjectSearchJob($subject->id, $source->id))->handle();
+
+    expect(LimiteDeQuery::contarPalabras($searchRun->query))->toBeLessThanOrEqual(75)
+        ->and($searchRun->query)->toContain('"Juan Carlos Perez"')->toContain('site:lanoticiasv.com')
+        ->and($searchRun->metadata_query['terminos_omitidos'])->toContain('alias12 uno dos tres cuatro')
+        ->and($searchRun->metadata_query['proveedor'])->toBe(['original' => 'x', 'altered' => null, 'search_operators' => ['applied' => true]]);
+    Http::assertSentCount(1);
 });

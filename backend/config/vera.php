@@ -14,7 +14,7 @@ declare(strict_types=1);
 */
 
 return [
-    'article_window_days' => (int) env('ARTICLE_WINDOW_DAYS', 30),
+    'article_window_days' => (int) env('ARTICLE_WINDOW_DAYS', 60),
     'extraction_confidence_threshold' => (float) env('EXTRACTION_CONFIDENCE_THRESHOLD', 0.6),
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Jobs\RunTagSearchJob;
 use App\Models\SearchResult;
+use App\Models\SearchRun;
 use App\Models\SearchTag;
 use App\Models\Source;
 use App\Models\Subject;
@@ -89,7 +90,7 @@ it('lista los resultados sin subject de las busquedas por tags del tenant', func
 
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create();
-    $searchRun = \App\Models\SearchRun::factory()->create(['subject_id' => null, 'tags' => ['hurto']]);
+    $searchRun = SearchRun::factory()->create(['subject_id' => null, 'tags' => ['hurto']]);
     SearchResult::factory()->create(['subject_id' => null, 'search_run_id' => $searchRun->id]);
     // Uno de un subject normal no deberia aparecer aqui.
     SearchResult::factory()->for($subject, 'subject')->create();
@@ -107,4 +108,23 @@ it('superadmin recibe 403 en las rutas de busqueda por tags', function () {
 
     $this->actingAs($superadmin)->postJson('/api/busquedas-tags', ['tag_ids' => [1]])->assertForbidden();
     $this->actingAs($superadmin)->getJson('/api/busquedas-tags/resultados')->assertForbidden();
+});
+
+it('responde 422 sin encolar nada si los tags elegidos no caben en el limite de 75 palabras de Brave', function () {
+    Bus::fake();
+    $tenant = Tenant::create();
+    $user = crearUsuarioBusquedaTagsConRol($tenant, 'analista');
+
+    tenancy()->initialize($tenant);
+    // 8 tags de 10 palabras = 80 palabras solo en tags: no caben.
+    $tagIds = collect(range(1, 8))
+        ->map(fn ($i) => SearchTag::create(['nombre' => "tag{$i} a b c d e f g h i", 'activo' => true])->id);
+    tenancy()->end();
+
+    $this->actingAs($user)
+        ->postJson('/api/busquedas-tags', ['tag_ids' => $tagIds->all()])
+        ->assertStatus(422)
+        ->assertJsonPath('mensaje', fn (string $mensaje) => str_contains($mensaje, 'menos tags'));
+
+    Bus::assertNotDispatched(RunTagSearchJob::class);
 });

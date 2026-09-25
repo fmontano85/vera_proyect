@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Sources;
 
+use App\Services\Search\LimiteDeQuery;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use RuntimeException;
 
 /**
@@ -28,16 +32,27 @@ class BraveSearchAdapter implements SourceAdapterInterface
     private const URL = 'https://api.search.brave.com/res/v1/web/search';
 
     /**
-     * Brave rechaza queries de mas de 600 caracteres / 75 palabras (limite
-     * documentado de la API) - Google CSE no tenia este limite, asi que
-     * RunSubjectSearchJob::construirQuery() no lo contempla. Se trunca
-     * aqui, no en el job, para no acoplar el limite de un proveedor
-     * especifico a la lógica generica de armar la query.
+     * Campos del bloque 'query' de la respuesta que se devuelven como
+     * metadata: permiten auditar si Brave altero la query o ignoro algun
+     * 'site:' (undecimo bloque del CLAUDE.md raiz).
      */
-    private const MAX_QUERY_LENGTH = 600;
+    private const CAMPOS_METADATA = ['original', 'altered', 'spellcheck_off', 'search_operators'];
 
-    public function buscar(string $query): array
+    public function buscar(string $query, ?int $diasAtras = null): array
     {
+        /**
+         * Limite real 600 caracteres / 75 palabras (referencia oficial). La
+         * query ya llega armada dentro del limite (LimiteDeQuery, en los
+         * jobs); si igual se pasa, se rechaza ANTES de reservar cuota - ya
+         * no se trunca, porque cortar a ciegas deja parentesis o 'site:'
+         * a medias.
+         */
+        if (LimiteDeQuery::excede($query)) {
+            throw new InvalidArgumentException(
+                'La query excede el limite de Brave ('.LimiteDeQuery::MAX_CARACTERES.' caracteres / '.LimiteDeQuery::MAX_PALABRAS.' palabras) - no se envio.'
+            );
+        }
+
         $this->reservarCupoMensual();
 
         $response = Http::timeout(15)
@@ -47,9 +62,7 @@ class BraveSearchAdapter implements SourceAdapterInterface
                 'Accept-Encoding' => 'gzip',
                 'X-Subscription-Token' => config('services.brave_search.api_key'),
             ])
-            ->get(self::URL, [
-                'q' => mb_substr($query, 0, self::MAX_QUERY_LENGTH),
-            ])
+            ->get(self::URL, $this->parametros($query, $diasAtras))
             ->throw();
 
         $items = $response->json('web.results', []);
@@ -70,7 +83,38 @@ class BraveSearchAdapter implements SourceAdapterInterface
             // se deja null por ahora, igual que con Google CSE (seccion 3.4:
             // "no inventar costo").
             'costo' => null,
+            'metadata' => Arr::only($response->json('query') ?? [], self::CAMPOS_METADATA) ?: null,
         ];
+    }
+
+    /**
+     * - spellcheck=false: con el default (true), si Brave "corrige" la
+     *   query busca SIEMPRE con la version alterada - riesgo directo para
+     *   nombres propios poco comunes ("Yuvini"). Como string: el cliente
+     *   HTTP serializaria el booleano false como "0".
+     * - search_lang=es: el default es 'en'.
+     * - country NO se envia (decision del usuario 2026-09-25): 'SV' no
+     *   esta entre los valores aceptados y los 'site:' ya restringen a
+     *   medios salvadorenos.
+     * - freshness: rango explicito (hoy - dias)to(hoy), nunca pm/py, que
+     *   no coinciden con ventanas arbitrarias (45, 60, 90 dias).
+     *
+     * @return array<string, string>
+     */
+    private function parametros(string $query, ?int $diasAtras): array
+    {
+        $parametros = [
+            'q' => $query,
+            'spellcheck' => 'false',
+            'search_lang' => 'es',
+        ];
+
+        if ($diasAtras !== null) {
+            $hoy = CarbonImmutable::now('UTC');
+            $parametros['freshness'] = $hoy->subDays($diasAtras)->toDateString().'to'.$hoy->toDateString();
+        }
+
+        return $parametros;
     }
 
     private function reservarCupoMensual(): void

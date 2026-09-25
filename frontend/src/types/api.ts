@@ -21,7 +21,9 @@ export interface Subject {
   nivel_riesgo: NivelRiesgo | null;
   activo: boolean;
   created_at: string;
-  aliases?: { id: number; nombre: string }[];
+  aliases?: SubjectAlias[];
+  /** Solo en el listado (GET /api/subjects). */
+  aliases_count?: number;
   /** Seccion 3.8: null = usa el default del tenant para su nivel. */
   frecuencia_seguimiento_dias?: number | null;
   /** Fecha de calendario 'YYYY-MM-DD' (formatear con lib/fechas, nunca con new Date()). */
@@ -29,6 +31,53 @@ export interface Subject {
   ultimo_seguimiento_en?: string | null;
   /** Presente en detalle, PATCH, panel y "seguimiento realizado". */
   seguimiento?: Seguimiento;
+}
+
+export interface SubjectAlias {
+  id: number;
+  nombre: string;
+}
+
+/** Filtros del listado de la lista de vigilancia (GET /api/subjects). */
+export interface FiltrosSubjects {
+  buscar?: string;
+  nivel?: NivelRiesgo | 'sin_nivel';
+  estado?: 'activos' | 'inactivos' | 'todos';
+  page?: number;
+}
+
+/** Fila de GET /api/coincidencias (CoincidenciaController::serializar). */
+export interface Coincidencia {
+  id: number;
+  estado: EstadoMatch;
+  score_meilisearch: string | null;
+  propuesta_estado: EstadoMatch | null;
+  propuesta_en: string | null;
+  propuesta_por_usuario: { id: number; name: string } | null;
+  created_at: string | null;
+  subject: Pick<Subject, 'id' | 'nombre_canonico' | 'nivel_riesgo' | 'activo'> | null;
+  mention: {
+    id: number;
+    nombre_extraido: string;
+    rol: RolMencion;
+    delitos: string[];
+    resumen: string | null;
+    fecha_hecho: string | null;
+    origen: OrigenMention;
+    article: Pick<Article, 'id' | 'url' | 'titulo' | 'medio' | 'fecha_publicacion'> | null;
+    search_result: { id: number; url: string; titulo: string | null; medio: string | null; fecha_brave: string | null } | null;
+  } | null;
+}
+
+export type BandejaCoincidencias = 'sin_propuesta' | 'esperan_resolucion';
+
+/** GET /api/inicio/resumen. */
+export interface ResumenInicio {
+  coincidencias_sin_propuesta: number;
+  coincidencias_esperan_resolucion: number;
+  seguimientos_vencidos: number;
+  seguimientos_proximos_7_dias: number;
+  resultados_gap: number;
 }
 
 /** Bloque de agenda de seguimiento (seccion 3.8, CalculadoraSeguimiento::resumen). */

@@ -1,10 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { Search } from 'lucide-react';
+import { Pencil, Power, Search } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { NivelRiesgoBadge } from '@/components/NivelRiesgoBadge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { puedeProponer, puedeResolver, useCurrentUser } from '@/features/auth/useAuth';
+import { AliasesSubject } from '@/features/consulta/AliasesSubject';
+import { DatosSubjectDialog } from '@/features/consulta/DatosSubjectDialog';
+import { EstadoSubjectDialog } from '@/features/consulta/EstadoSubjectDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FiltroEstado, type FiltroResultados } from '@/features/resultados/FiltroEstado';
@@ -34,6 +39,9 @@ function SubjectDetailPage() {
   const { data: resultados, isLoading: resultadosLoading } = useSearchResults(id, buscando);
   const buscar = useBuscarSubject(id);
   const [filtro, setFiltro] = useState<FiltroResultados>('todos');
+  const { data: user } = useCurrentUser();
+  const [datosAbierto, setDatosAbierto] = useState(false);
+  const [estadoAbierto, setEstadoAbierto] = useState(false);
 
   function handleBuscar() {
     buscar.mutate(undefined, {
@@ -61,21 +69,50 @@ function SubjectDetailPage() {
 
       {subject && (
         <Card className="mb-6">
-          <CardHeader className="flex flex-row items-start justify-between">
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
               <CardTitle className="text-xl">{subject.nombre_canonico}</CardTitle>
-              <p className="text-muted-foreground mt-1 text-sm capitalize">
-                {subject.tipo} {subject.documento && `· ${subject.documento}`}
+              <p className="text-muted-foreground mt-1 text-sm">
+                {subject.tipo === 'juridica' ? 'Persona jurídica' : 'Persona natural'}
+                {subject.documento && ` · ${subject.documento}`}
               </p>
             </div>
-            <NivelRiesgoBadge nivel={subject.nivel_riesgo} />
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <NivelRiesgoBadge nivel={subject.nivel_riesgo} />
+              {!subject.activo && <Badge variant="outline">Inactivo</Badge>}
+            </div>
           </CardHeader>
-          <CardContent>
-            <Button onClick={handleBuscar} disabled={buscar.isPending}>
-              <Search />
-              {buscar.isPending ? 'Encolando…' : 'Consulta puntual'}
-            </Button>
+          <CardContent className="flex flex-col gap-4">
+            {!subject.activo && (
+              <p className="text-muted-foreground text-sm">
+                Sujeto inactivo: no participa en el cruce de coincidencias ni en la agenda de seguimiento.
+              </p>
+            )}
+
+            <AliasesSubject subject={subject} editable={puedeProponer(user)} />
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleBuscar} disabled={buscar.isPending}>
+                <Search />
+                {buscar.isPending ? 'Encolando…' : 'Consulta puntual'}
+              </Button>
+              {puedeProponer(user) && (
+                <Button variant="outline" onClick={() => setDatosAbierto(true)}>
+                  <Pencil />
+                  Editar datos
+                </Button>
+              )}
+              {puedeResolver(user) && (
+                <Button variant={subject.activo ? 'destructive' : 'outline'} onClick={() => setEstadoAbierto(true)}>
+                  <Power />
+                  {subject.activo ? 'Desactivar' : 'Reactivar'}
+                </Button>
+              )}
+            </div>
           </CardContent>
+          {/* Montados solo al abrir: el formulario toma los valores actuales. */}
+          {datosAbierto && <DatosSubjectDialog subject={subject} onOpenChange={setDatosAbierto} />}
+          {estadoAbierto && <EstadoSubjectDialog subject={subject} onOpenChange={setEstadoAbierto} />}
         </Card>
       )}
 

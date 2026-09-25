@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CalendarClock, LogOut, Search, Settings, ShieldCheck, Tags } from 'lucide-react';
+import { CalendarClock, House, Inbox, LogOut, Search, Settings, ShieldCheck, Tags } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
   DropdownMenu,
@@ -13,7 +13,9 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { esAdmin, useCurrentUser, useLogout } from '@/features/auth/useAuth';
 
 const NAV_ITEMS = [
-  { to: '/subjects', label: 'Sujetos', icon: Search },
+  { to: '/', label: 'Inicio', icon: House },
+  { to: '/coincidencias', label: 'Coincidencias', icon: Inbox },
+  { to: '/subjects', label: 'Lista de vigilancia', icon: Search },
   { to: '/seguimientos', label: 'Seguimientos', icon: CalendarClock },
   { to: '/busqueda-tags', label: 'Búsqueda por tags', icon: Tags },
 ] as const;
@@ -48,6 +50,8 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
             <Link
               key={to}
               to={to}
+              // '/' es prefijo de todas las rutas: sin exact, "Inicio" quedaria siempre activo.
+              activeOptions={{ exact: to === '/' }}
               className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors"
             >
               <Icon className="size-4" />

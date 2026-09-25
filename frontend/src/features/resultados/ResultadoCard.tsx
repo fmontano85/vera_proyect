@@ -8,20 +8,13 @@ import { GapMotivoBadge } from '@/components/GapMotivoBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { puedeProponer, puedeResolver, useCurrentUser } from '@/features/auth/useAuth';
-import { useProponer, useResolver } from '@/features/coincidencias/useMatches';
+import { MatchAcciones } from '@/features/coincidencias/MatchAcciones';
 import { useDescartar, useExtraer } from '@/features/resultados/useSearchResults';
 import { CapturaManualDialog } from '@/features/resultados/CapturaManualDialog';
 import { ApiError } from '@/lib/api';
-import type { EstadoMatch, Mention, SearchResult } from '@/types/api';
+import type { Mention, SearchResult } from '@/types/api';
 
 /** queryKey en vez de un subjectId fijo: esta tarjeta se reutiliza tal
  * cual tanto en /subjects/$id (resultados de un subject) como en la
@@ -149,27 +142,8 @@ export function ResultadoCard({
 
 function MentionCard({ mention, queryKey }: { mention: Mention; queryKey: QueryKey }) {
   const { data: user } = useCurrentUser();
-  const proponer = useProponer(queryKey);
-  const resolver = useResolver(queryKey);
-  const [seleccion, setSeleccion] = useState<Exclude<EstadoMatch, 'pendiente'> | ''>('');
-
   const match = mention.match;
   const puedeActuar = match?.estado === 'pendiente';
-
-  function accion(tipo: 'proponer' | 'resolver') {
-    if (!seleccion || !match) return;
-
-    const mutation = tipo === 'proponer' ? proponer : resolver;
-    mutation.mutate(
-      { matchId: match.id, estado: seleccion },
-      {
-        onSuccess: () =>
-          toast.success(tipo === 'proponer' ? 'Resolución propuesta.' : 'Coincidencia resuelta.'),
-        onError: (error) =>
-          toast.error(error instanceof ApiError ? error.message : 'No se pudo completar la acción.'),
-      },
-    );
-  }
 
   return (
     <div className="rounded-lg border p-3">
@@ -198,38 +172,10 @@ function MentionCard({ mention, queryKey }: { mention: Mention; queryKey: QueryK
         </p>
       )}
 
-      {puedeActuar && (puedeProponer(user) || puedeResolver(user)) && (
+      {match && puedeActuar && (puedeProponer(user) || puedeResolver(user)) && (
         <>
           <Separator className="my-3" />
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={seleccion} onValueChange={(v: typeof seleccion) => setSeleccion(v)}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Elegir resolución" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="confirmado">Confirmado</SelectItem>
-                <SelectItem value="falso_positivo">Falso positivo</SelectItem>
-                <SelectItem value="homonimo">Homónimo</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {puedeProponer(user) && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!seleccion || proponer.isPending}
-                onClick={() => accion('proponer')}
-              >
-                Proponer
-              </Button>
-            )}
-
-            {puedeResolver(user) && (
-              <Button size="sm" disabled={!seleccion || resolver.isPending} onClick={() => accion('resolver')}>
-                Resolver
-              </Button>
-            )}
-          </div>
+          <MatchAcciones matchId={match.id} estado={match.estado} queryKey={queryKey} />
         </>
       )}
     </div>

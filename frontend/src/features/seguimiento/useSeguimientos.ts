@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { listaSubjectsKey } from '@/features/consulta/useSubjects';
 import { api } from '@/lib/api';
 import type { FrecuenciasSeguimiento, NivelRiesgo, Paginated, Subject } from '@/types/api';
 
@@ -22,6 +23,7 @@ export function useSeguimientos(filtro: FiltroSeguimientos, pagina = 1) {
  * indicador nuevo_desde_ultimo_seguimiento) los resultados del subject. */
 function invalidarAgenda(queryClient: ReturnType<typeof useQueryClient>, subjectId?: number) {
   queryClient.invalidateQueries({ queryKey: ['seguimientos'] });
+  queryClient.invalidateQueries({ queryKey: ['inicio'] });
   if (subjectId !== undefined) {
     queryClient.invalidateQueries({ queryKey: ['subjects', subjectId, 'resultados'] });
   }
@@ -40,9 +42,14 @@ export function useMarcarSeguimiento(subjectId: number) {
   });
 }
 
+/** PATCH /api/subjects/{id}. 'activo' solo oficial/admin (403 al resto). */
 export interface CambiosSubject {
   nivel_riesgo?: NivelRiesgo | null;
   frecuencia_seguimiento_dias?: number | null;
+  nombre_canonico?: string;
+  tipo?: 'natural' | 'juridica';
+  documento?: string | null;
+  activo?: boolean;
 }
 
 export function useActualizarSubject(subjectId: number) {
@@ -52,7 +59,7 @@ export function useActualizarSubject(subjectId: number) {
     mutationFn: (cambios: CambiosSubject) => api.patch<Subject>(`/api/subjects/${subjectId}`, cambios),
     onSuccess: (subject) => {
       queryClient.setQueryData(['subjects', subjectId], (previo: Subject | undefined) => ({ ...previo, ...subject }));
-      queryClient.invalidateQueries({ queryKey: ['subjects'], exact: true });
+      queryClient.invalidateQueries({ queryKey: listaSubjectsKey });
       invalidarAgenda(queryClient);
     },
   });

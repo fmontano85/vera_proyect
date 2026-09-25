@@ -390,3 +390,16 @@ it('la reconciliacion queda programada diariamente', function () {
         ->and($evento->expression)->toBe('0 3 * * *')
         ->and($evento->timezone)->toBe('America/El_Salvador');
 });
+
+it('los errores de validacion se devuelven en espanol (la interfaz los muestra tal cual)', function () {
+    $tenant = Tenant::create();
+    $user = usuarioListaConRol($tenant, 'analista');
+    $subject = subjectEnTenant($tenant, [], ['Chepe']);
+
+    $this->actingAs($user)
+        ->postJson("/api/subjects/{$subject->id}/aliases", ['nombre' => 'Chepe'])
+        ->assertJsonPath('errors.nombre.0', 'Ese alias ya existe.');
+    $this->actingAs($user)
+        ->postJson('/api/subjects', ['tipo' => 'natural'])
+        ->assertJsonPath('errors.nombre_canonico.0', 'El campo nombre completo es obligatorio.');
+});

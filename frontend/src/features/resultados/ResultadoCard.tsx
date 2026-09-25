@@ -77,7 +77,12 @@ export function ResultadoCard({
             <p className="text-muted-foreground mt-2 text-sm">{resultado.snippet}</p>
           )}
         </div>
-        <EstadoSearchResultBadge estado={resultado.estado} />
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <EstadoSearchResultBadge estado={resultado.estado} />
+          {resultado.nuevo_desde_ultimo_seguimiento && (
+            <Badge className="bg-secondary text-secondary-foreground">Nuevo desde el último seguimiento</Badge>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3">

@@ -57,7 +57,13 @@ export function puedeResolver(user: User | null | undefined): boolean {
 }
 
 /** Roles que pueden proponer una resolucion o ejecutar una consulta
- * puntual (seccion 3.2: analista/oficial_cumplimiento/admin). */
+ * puntual (seccion 3.2: analista/oficial_cumplimiento/admin). Mismo set
+ * para marcar un seguimiento y editar nivel/frecuencia (seccion 3.8). */
 export function puedeProponer(user: User | null | undefined): boolean {
   return !!user?.roles.some((r) => ['analista', 'oficial_cumplimiento', 'admin'].includes(r));
+}
+
+/** Configuracion del tenant (seccion 3.2/3.8): solo admin. */
+export function esAdmin(user: User | null | undefined): boolean {
+  return !!user?.roles.includes('admin');
 }

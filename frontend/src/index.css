@@ -39,6 +39,8 @@
   --warning-foreground: #2c2c2c;
   --gap: #8a6d3b;
   --gap-foreground: #ffffff;
+  --vencido: #7b5ea7;
+  --vencido-foreground: #ffffff;
 
   --border: #dddddd;
   --input: #dddddd;
@@ -83,6 +85,8 @@
   --warning-foreground: #101010;
   --gap: #c99a53;
   --gap-foreground: #101010;
+  --vencido: #a98bd6;
+  --vencido-foreground: #101010;
 
   --border: #3a3a3a;
   --input: #3a3a3a;
@@ -121,6 +125,8 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-gap: var(--gap);
   --color-gap-foreground: var(--gap-foreground);
+  --color-vencido: var(--vencido);
+  --color-vencido-foreground: var(--vencido-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

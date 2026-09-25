@@ -85,6 +85,15 @@ improvisar variantes por pantalla.
 | `gap` | `--gap` (ámbar-marrón `#8A6D3B` claro / `#C99A53` oscuro) | el fetch automático falló — **no es un error del sistema**, es un estado válido que requiere acción humana (reintentar o captura manual). Deliberadamente distinto de `--warning` (que ya significa "coincidencia pendiente de revisar") para no confundir un GAP de scraping con una coincidencia de riesgo sin resolver |
 | `descartado` | `--muted` con opacidad reducida | marcado irrelevante por el usuario, tarjeta atenuada |
 
+**Agenda de seguimiento** (sección 3.8, Fase 2 — nuevo token `--vencido`):
+
+| Valor | Token | Por qué |
+|---|---|---|
+| seguimiento vencido | `--vencido` (violeta `#7B5EA7` claro / `#A98BD6` oscuro) | toca revisar a la persona — es una **tarea pendiente de agenda**, no un hallazgo de riesgo. Deliberadamente fuera de la familia ámbar/rojo: `--warning` ya es "coincidencia pendiente / riesgo medio", `--gap` es "fetch fallido" y `--destructive` es "confirmado / riesgo alto". Un vencimiento en rojo se leería como "esta persona es riesgosa" |
+| próximo (no vencido) | `--muted` / texto normal | informativo |
+| frecuencia personalizada | `Badge variant="outline"` | distinguirla del default del nivel sin darle peso de alerta |
+| nuevo desde el último seguimiento | `--secondary` | información para el analista, no un estado de riesgo |
+
 ---
 
 ## Tipografía

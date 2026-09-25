@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FiltroEstado, type FiltroResultados } from '@/features/resultados/FiltroEstado';
+import { filtrarResultados } from '@/features/resultados/filtrarResultados';
 import { ResultadoCard } from '@/features/resultados/ResultadoCard';
 import { useSearchResults } from '@/features/resultados/useSearchResults';
 import { useBuscarSubject, useSubject } from '@/features/consulta/useSubjects';
+import { SeguimientoCard } from '@/features/seguimiento/SeguimientoCard';
 import { ApiError } from '@/lib/api';
 
 export const Route = createFileRoute('/_authenticated/subjects/$subjectId')({
@@ -51,8 +53,7 @@ function SubjectDetailPage() {
   if (buscando && (resultados?.data.length ?? 0) > 0) setBuscando(false);
 
   const listaCompleta = resultados?.data ?? [];
-  const listaFiltrada =
-    filtro === 'todos' ? listaCompleta : listaCompleta.filter((r) => r.estado === filtro);
+  const listaFiltrada = filtrarResultados(listaCompleta, filtro);
 
   return (
     <AppShell title={subject?.nombre_canonico ?? 'Sujeto'}>
@@ -78,9 +79,11 @@ function SubjectDetailPage() {
         </Card>
       )}
 
+      {subject && <SeguimientoCard subject={subject} />}
+
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Resultados de búsqueda</h2>
-        <FiltroEstado value={filtro} onChange={setFiltro} />
+        <FiltroEstado value={filtro} onChange={setFiltro} mostrarDesdeSeguimiento />
       </div>
 
       {resultadosLoading && <Skeleton className="h-32 w-full" />}

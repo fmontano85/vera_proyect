@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { LogOut, Search, ShieldCheck, Tags } from 'lucide-react';
+import { CalendarClock, LogOut, Search, Settings, ShieldCheck, Tags } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
   DropdownMenu,
@@ -10,12 +10,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useCurrentUser, useLogout } from '@/features/auth/useAuth';
+import { esAdmin, useCurrentUser, useLogout } from '@/features/auth/useAuth';
 
 const NAV_ITEMS = [
   { to: '/subjects', label: 'Sujetos', icon: Search },
+  { to: '/seguimientos', label: 'Seguimientos', icon: CalendarClock },
   { to: '/busqueda-tags', label: 'Búsqueda por tags', icon: Tags },
 ] as const;
+
+/** Solo admin (seccion 3.2: configuracion del tenant). El backend igual
+ * responde 403 al PUT para cualquier otro rol. */
+const NAV_ADMIN = [{ to: '/configuracion', label: 'Configuración', icon: Settings }] as const;
 
 export function AppShell({ title, children }: { title: string; children: ReactNode }) {
   const { data: user } = useCurrentUser();
@@ -39,7 +44,7 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
           <span className="font-semibold tracking-tight">VERA</span>
         </div>
         <nav className="flex flex-col gap-1 px-2 py-2">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          {[...NAV_ITEMS, ...(esAdmin(user) ? NAV_ADMIN : [])].map(({ to, label, icon: Icon }) => (
             <Link
               key={to}
               to={to}

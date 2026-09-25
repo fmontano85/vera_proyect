@@ -22,7 +22,29 @@ export interface Subject {
   activo: boolean;
   created_at: string;
   aliases?: { id: number; nombre: string }[];
+  /** Seccion 3.8: null = usa el default del tenant para su nivel. */
+  frecuencia_seguimiento_dias?: number | null;
+  /** Fecha de calendario 'YYYY-MM-DD' (formatear con lib/fechas, nunca con new Date()). */
+  proximo_seguimiento_en?: string | null;
+  ultimo_seguimiento_en?: string | null;
+  /** Presente en detalle, PATCH, panel y "seguimiento realizado". */
+  seguimiento?: Seguimiento;
 }
+
+/** Bloque de agenda de seguimiento (seccion 3.8, CalculadoraSeguimiento::resumen). */
+export interface Seguimiento {
+  frecuencia_dias: number;
+  origen_frecuencia: 'nivel' | 'personalizada';
+  proximo_seguimiento_en: string | null;
+  vencido: boolean;
+  ultimo_seguimiento_en: string | null;
+  ultimo_seguimiento_por: { id: number; name: string } | null;
+}
+
+export type NivelFrecuencia = NivelRiesgo | 'sin_nivel';
+
+/** Dias de seguimiento por nivel de riesgo del tenant (seccion 3.8). */
+export type FrecuenciasSeguimiento = Record<NivelFrecuencia, number>;
 
 export interface Article {
   id: number;
@@ -107,6 +129,9 @@ export interface SearchResult {
   created_at: string;
   article?: Article | null;
   mentions?: Mention[];
+  /** Seccion 3.8: aparecio despues del ultimo seguimiento del subject
+   * (solo en GET /subjects/{id}/resultados, no en busqueda por tags). */
+  nuevo_desde_ultimo_seguimiento?: boolean;
 }
 
 /** Busqueda por tags (sesion posterior a la 3.7) - catalogo por tenant. */

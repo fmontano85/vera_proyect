@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FiltroEstado, type FiltroResultados } from '@/features/resultados/FiltroEstado';
+import { filtrarResultados } from '@/features/resultados/filtrarResultados';
 import { ResultadoCard } from '@/features/resultados/ResultadoCard';
 import { useTagSearchResults } from '@/features/resultados/useSearchResults';
 import { useBuscarPorTags, useCrearSearchTag, useSearchTags } from '@/features/resultados/useSearchTags';
@@ -86,8 +87,7 @@ function BusquedaPorTagsPage() {
   if (buscando && (resultados?.data.length ?? 0) > 0) setBuscando(false);
 
   const listaCompleta = resultados?.data ?? [];
-  const listaFiltrada =
-    filtro === 'todos' ? listaCompleta : listaCompleta.filter((r) => r.estado === filtro);
+  const listaFiltrada = filtrarResultados(listaCompleta, filtro);
 
   return (
     <AppShell title="Búsqueda por tags">

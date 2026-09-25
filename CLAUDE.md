@@ -8,7 +8,7 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-25 (decimoquinto bloque — gestión de la lista de vigilancia + dashboard de coincidencias: backend + frontend, verificados en navegador)
+**Última actualización:** 2026-09-25 17:19 (cierre de sesión — bloques 12 a 15: parámetros de Brave, Fase 2 completa, lista de vigilancia + dashboard; todo comiteado en `develop`, sin push)
 
 ### En qué estábamos
 **Sesión del 2026-09-25 (decimoquinto bloque — UI de gestión de la lista de vigilancia + dashboard de coincidencias pendientes):** plan presentado y confirmado. Decisiones del usuario: **activar/desactivar solo `oficial_cumplimiento` + `admin`** (alta, aliases y datos básicos también `analista`); **el inicio `/` pasa a ser el dashboard**. Commits: backend `8de97a9`, idioma `89366ba`, frontend (este bloque). **212 tests backend pasan.**
@@ -170,6 +170,23 @@ Con eso resuelto, se construyó **todo el frontend funcional de Fase 1** de punt
 **Sesión del 2026-09-21 (corta):** solo se comitió todo el trabajo acumulado de Fase 1 — commit `121631c` en `develop` ("Agrega pipeline de Fase 1 y endpoint de consulta puntual"), **sin `Co-Authored-By`** (el `CLAUDE.md` del proyecto lo prohíbe y prevalece sobre el recordatorio de atribución del sistema). No se corrieron tests en esa sesión ni se tocó código.
 
 **Sesión anterior (2026-09-14 tarde):** continuación: el usuario dio credenciales reales de Google CSE y Anthropic. Se conectaron, se construyó el primer flujo de Fase 1 que faltaba (**consulta puntual por HTTP**, nada la disparaba todavía), se corrió el pipeline contra las APIs reales por primera vez, y en el proceso salieron dos bugs reales y un hueco de seguridad de costos que ya quedaron corregidos y con tests. **60 tests pasan.** Contenedores Docker quedan **detenidos** al cerrar esta sesión (pedido explícito del usuario) — todo lo de abajo asume que hay que levantarlos de nuevo para retomar.
+
+### Qué se completó (sesión 2026-09-25 — cierre 17:19)
+Detalle de cada bloque en "En qué estábamos" (bloques 12 a 15). Commits en `develop`, **sin push a GitHub**; árbol de trabajo limpio al cerrar. **212 tests backend pasan.**
+- `6e5d390` — Brave: `freshness` en origen, `spellcheck=false`, `search_lang=es`, sin `country`, límite 600 caracteres / 75 palabras (`LimiteDeQuery`), `search_runs.metadata_query`; `ARTICLE_WINDOW_DAYS=60`. Hueco de cobertura de laprensagrafica.com documentado (opción 1 del usuario).
+- `dcc1089` + `28a9eee` — **Fase 2 completa (sección 3.8):** agenda de seguimiento (backend + frontend), revisada con `/code-review` y verificada con Playwright.
+- `8de97a9` + `89366ba` + `49842d4` — **UI de gestión de la lista de vigilancia + dashboard de coincidencias pendientes** (inicio `/`, `/coincidencias`), reconciliación diaria del índice de Meilisearch, mensajes de validación en español; revisado con `/code-review` y verificado con Playwright en los dos tenants (20/20).
+
+### Próximo paso (al retomar)
+1. **Navegación en móvil** (primer ítem del "Resto de la interfaz" en Pendiente): `AppShell` no tiene menú por debajo de `md`. Proponer plan (ej. `Sheet` de shadcn); al instalar componentes shadcn revisar los dos bugs conocidos del CLI (carpeta literal `@/` y selectores Base UI `data-active:` sobre primitivas Radix).
+2. Luego, en orden: sanciones (OFAC) → evidencia → historial de auditoría → catálogo de tags → usuarios del tenant → cuenta propia → "Powered by Brave". Arreglar de paso el selector de persona de `CapturaManualDialog` (solo lista 15).
+3. Decidir con el usuario cuándo hacer push / PRs de `develop` (convención: backend y frontend en PRs separados).
+
+### Contexto para retomar (sesión 2026-09-25)
+- Contenedores Docker quedaron **arriba**. El dev server de Vite corría como tarea de fondo de la sesión de Claude Code: al cerrar la sesión se detiene — levantarlo con `cd frontend && npm run dev` (http://localhost:5173).
+- Usuarios de prueba (todos `Demo1234!`): `demo@vera.test` (oficial, tenant del usuario), `qa-admin@vera.test` (admin, tenant demo), `qa-analista-demo@vera.test`, `qa-analista-usuario@vera.test` (analistas). **Los datos de dev son de prueba** (confirmado por el usuario): en QA se puede modificar cualquier tenant sin preguntar; sí pedir confirmación antes de gastar cuota de Brave/Anthropic.
+- Tras cambiar clases de Job/Adapter: `docker exec vera_api php artisan horizon:terminate`. Antes de `npm run build`: detener el dev server (OOM).
+- Pendientes de decisión externos siguen abiertos: SMTP real, frecuencia mínima UIF, derechos de almacenamiento y atribución de Brave, cobertura de LPG.
 
 ### Qué se completó (sesión 2026-09-24; el resto de sesiones ver "En qué estábamos" arriba)
 - **Reemplazo de Google CSE por Brave Search API como fuente activa por default:**

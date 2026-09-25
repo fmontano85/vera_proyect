@@ -3,11 +3,14 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CoincidenciaController;
 use App\Http\Controllers\ConfiguracionController;
+use App\Http\Controllers\InicioController;
 use App\Http\Controllers\MatchController;
 use App\Http\Controllers\SearchResultController;
 use App\Http\Controllers\SearchTagController;
 use App\Http\Controllers\SeguimientoController;
+use App\Http\Controllers\SubjectAliasController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TagSearchController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +36,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show', 'update']);
     Route::post('subjects/{subject}/buscar', [SubjectController::class, 'buscar']);
     Route::get('subjects/{subject}/matches', [SubjectController::class, 'matches']);
+    Route::post('subjects/{subject}/aliases', [SubjectAliasController::class, 'store']);
+    Route::delete('subjects/{subject}/aliases/{alias}', [SubjectAliasController::class, 'destroy'])->scopeBindings();
+
+    // Inicio y dashboard de coincidencias pendientes (Fase 2).
+    Route::get('inicio/resumen', [InicioController::class, 'resumen']);
+    Route::get('coincidencias', [CoincidenciaController::class, 'index']);
     Route::post('matches/{match}/proponer', [MatchController::class, 'proponer']);
     Route::post('matches/{match}/resolver', [MatchController::class, 'resolver']);
 

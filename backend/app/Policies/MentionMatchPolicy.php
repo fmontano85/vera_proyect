@@ -15,6 +15,12 @@ use App\Models\User;
  */
 class MentionMatchPolicy
 {
+    /** Dashboard de coincidencias: todos los roles del tenant (lectura incluido). */
+    public function viewAny(User $user): bool
+    {
+        return true;
+    }
+
     public function view(User $user, MentionMatch $match): bool
     {
         return true;

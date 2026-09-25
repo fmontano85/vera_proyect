@@ -5,21 +5,33 @@ declare(strict_types=1);
 namespace App\Actions\Subjects;
 
 use App\Models\Subject;
+use App\Services\Matching\IndiceSubjects;
+use Illuminate\Support\Facades\DB;
 
 /**
- * Seccion 3.8: cambiar nivel de riesgo o frecuencia personalizada. El
+ * Edicion del subject: datos basicos (nombre, tipo, documento), estado
+ * activo y agenda de seguimiento (nivel, frecuencia - seccion 3.8). El
  * recalculo de proximo_seguimiento_en y la auditoria los hace el propio
- * modelo (hook de Subject + LogsActivity).
+ * modelo. Si cambia algo que esta en el indice (nombre, activo), se
+ * reindexa dentro de la transaccion: si Meilisearch falla, no se guarda.
  */
 class ActualizarSubject
 {
+    public function __construct(private readonly IndiceSubjects $indice) {}
+
     /**
-     * @param  array{nivel_riesgo?: ?string, frecuencia_seguimiento_dias?: ?int}  $data
+     * @param  array<string, mixed>  $data
      */
     public function handle(Subject $subject, array $data): Subject
     {
-        $subject->update($data);
+        return DB::transaction(function () use ($subject, $data) {
+            Subject::withoutSyncingToSearch(fn () => $subject->update($data));
 
-        return $subject;
+            if ($subject->wasChanged(['nombre_canonico', 'activo'])) {
+                $this->indice->reindexar($subject);
+            }
+
+            return $subject;
+        });
     }
 }

@@ -40,9 +40,7 @@ class SeguimientoController extends Controller
         if ($filtro === 'vencidos') {
             $consulta->vencidosAl($hoy->toDateString());
         } else {
-            $consulta->where('activo', true)
-                ->where('proximo_seguimiento_en', '>', $hoy->toDateString())
-                ->where('proximo_seguimiento_en', '<=', $hoy->addDays(self::DIAS_PROXIMOS)->toDateString());
+            $consulta->proximosAl($hoy, self::DIAS_PROXIMOS);
         }
 
         $frecuencias = $calculadora->frecuenciasDelTenant(tenant('id'));

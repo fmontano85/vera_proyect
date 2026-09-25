@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Models\Concerns\DerivesTenantFromSubject;
 use Database\Factories\MentionMatchFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -59,6 +60,22 @@ class MentionMatch extends Model
         return LogOptions::defaults()
             ->logOnly(['estado', 'resuelto_por', 'propuesta_estado', 'propuesta_por'])
             ->logOnlyDirty();
+    }
+
+    /**
+     * Bandejas del dashboard (control de dos pasos, seccion 3.2): una sola
+     * definicion para la lista y para los contadores del inicio.
+     *
+     * @param  Builder<MentionMatch>  $query
+     */
+    public function scopeEnBandeja(Builder $query, string $bandeja): void
+    {
+        $query->where('estado', 'pendiente')
+            ->when(
+                $bandeja === 'sin_propuesta',
+                fn (Builder $q) => $q->whereNull('propuesta_estado'),
+                fn (Builder $q) => $q->whereNotNull('propuesta_estado'),
+            );
     }
 
     public function mention(): BelongsTo

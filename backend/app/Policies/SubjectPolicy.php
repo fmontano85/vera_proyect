@@ -52,6 +52,17 @@ class SubjectPolicy
     }
 
     /**
+     * Activar/desactivar saca o devuelve a la persona del matching y de la
+     * agenda de seguimiento: decision de cumplimiento, no operativa
+     * (decision del usuario 2026-09-25, seccion 3.2: el oficial "gestiona
+     * la lista de vigilancia"). analista no.
+     */
+    public function cambiarEstado(User $user, Subject $subject): bool
+    {
+        return $user->hasAnyRole(['admin', 'oficial_cumplimiento']);
+    }
+
+    /**
      * Seccion 3.8: cerrar un seguimiento. No es una resolucion de
      * coincidencia (no aplica el control de dos pasos de la 3.2), por eso
      * analista tambien puede. lectura no.

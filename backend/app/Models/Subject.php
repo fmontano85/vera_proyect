@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Casts\FechaSinHora;
 use App\Services\Seguimiento\CalculadoraSeguimiento;
+use Carbon\CarbonImmutable;
 use Database\Factories\SubjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -149,5 +150,36 @@ class Subject extends Model
         $query->where('activo', true)
             ->whereNotNull('proximo_seguimiento_en')
             ->where('proximo_seguimiento_en', '<=', $hoy);
+    }
+
+    /**
+     * Activos que vencen despues de hoy y hasta $dias dias (panel
+     * "proximos" e inicio - misma definicion en ambos).
+     *
+     * @param  Builder<Subject>  $query
+     */
+    public function scopeProximosAl(Builder $query, CarbonImmutable $hoy, int $dias): void
+    {
+        $query->where('activo', true)
+            ->where('proximo_seguimiento_en', '>', $hoy->toDateString())
+            ->where('proximo_seguimiento_en', '<=', $hoy->addDays($dias)->toDateString());
+    }
+
+    /**
+     * Busqueda de la pantalla de gestion por nombre canonico o alias
+     * (LIKE simple; el matching de nombres usa Meilisearch, seccion 2).
+     * ESCAPE explicito con '!': portable entre MariaDB y SQLite (SQLite no
+     * tiene caracter de escape por defecto), asi '%' y '_' del usuario
+     * son texto literal.
+     *
+     * @param  Builder<Subject>  $query
+     */
+    public function scopeBuscarNombreOAlias(Builder $query, string $texto): void
+    {
+        $patron = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $texto).'%';
+
+        $query->where(fn (Builder $q) => $q
+            ->whereRaw("nombre_canonico LIKE ? ESCAPE '!'", [$patron])
+            ->orWhereHas('aliases', fn (Builder $a) => $a->whereRaw("nombre LIKE ? ESCAPE '!'", [$patron])));
     }
 }

@@ -41,10 +41,12 @@ class AuthController extends Controller
         return $this->conUsuarioYRoles($request);
     }
 
+    /**
+     * El chequeo de users.activo ya lo hace el middleware 'activo' de la
+     * ruta (App\Http\Middleware\EnsureUserIsActive) - no repetirlo aqui.
+     */
     public function me(Request $request): JsonResponse
     {
-        abort_if($request->user()->activo === false, 401);
-
         return $this->conUsuarioYRoles($request);
     }
 

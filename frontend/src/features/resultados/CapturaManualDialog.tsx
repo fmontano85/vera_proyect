@@ -22,10 +22,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useSubjects } from '@/features/consulta/useSubjects';
+import { BuscadorSubjectAsync } from '@/features/consulta/BuscadorSubjectAsync';
 import { useCapturaManual } from '@/features/resultados/useSearchResults';
 import { ApiError } from '@/lib/api';
-import type { RolMencion, SearchResult } from '@/types/api';
+import type { RolMencion, SearchResult, Subject } from '@/types/api';
 
 const ESTADO_RESOLUCION_OPCIONES = [
   { value: 'confirmado', label: 'Confirmado' },
@@ -60,8 +60,7 @@ export function CapturaManualDialog({
 }: CapturaManualDialogProps) {
   const capturar = useCapturaManual(queryKey);
   const necesitaElegirSubject = resultado.subject_id === null;
-  const [busquedaSubject, setBusquedaSubject] = useState('');
-  const { data: subjects } = useSubjects({ buscar: busquedaSubject });
+  const [subjectElegido, setSubjectElegido] = useState<Subject | null>(null);
 
   const [nombre, setNombre] = useState('');
   const [rol, setRol] = useState<RolMencion | ''>('');
@@ -72,8 +71,6 @@ export function CapturaManualDialog({
   const [estadoResolucion, setEstadoResolucion] = useState<
     (typeof ESTADO_RESOLUCION_OPCIONES)[number]['value'] | ''
   >('');
-  const [subjectId, setSubjectId] = useState<string>('');
-  const [subjectNombre, setSubjectNombre] = useState('');
   const [pdf, setPdf] = useState<File | null>(null);
 
   function limpiar() {
@@ -84,9 +81,7 @@ export function CapturaManualDialog({
     setFechaHecho('');
     setResumen('');
     setEstadoResolucion('');
-    setSubjectId('');
-    setSubjectNombre('');
-    setBusquedaSubject('');
+    setSubjectElegido(null);
     setPdf(null);
   }
 
@@ -107,7 +102,7 @@ export function CapturaManualDialog({
     delitos.length > 0 &&
     estadoResolucion !== '' &&
     pdf !== null &&
-    (!necesitaElegirSubject || subjectId !== '');
+    (!necesitaElegirSubject || subjectElegido !== null);
 
   function enviar() {
     if (!formularioValido || !rol || !estadoResolucion || !pdf) return;
@@ -122,7 +117,7 @@ export function CapturaManualDialog({
           fecha_hecho: fechaHecho || undefined,
           resumen: resumen.trim() || undefined,
           estado_resolucion: estadoResolucion,
-          subject_id: subjectId ? Number(subjectId) : undefined,
+          subject_id: subjectElegido?.id,
           pdf,
         },
       },
@@ -240,35 +235,7 @@ export function CapturaManualDialog({
               <Label>Persona vigilada a la que se atribuye el hallazgo</Label>
               {/* Busqueda en el servidor: la lista de vigilancia puede tener mas
                   de una pagina, un Select con la primera pagina dejaria personas fuera. */}
-              {subjectId !== '' && (
-                <p className="text-sm">
-                  Seleccionada: <span className="font-medium">{subjectNombre}</span>
-                </p>
-              )}
-              <Input
-                value={busquedaSubject}
-                onChange={(e) => setBusquedaSubject(e.target.value)}
-                placeholder="Buscar por nombre o alias…"
-              />
-              <ul className="max-h-40 divide-y overflow-y-auto rounded-md border">
-                {subjects?.data.length === 0 && (
-                  <li className="text-muted-foreground p-2 text-sm">Sin coincidencias.</li>
-                )}
-                {subjects?.data.map((subject) => (
-                  <li key={subject.id}>
-                    <button
-                      type="button"
-                      className="hover:bg-accent w-full px-2 py-1.5 text-left text-sm"
-                      onClick={() => {
-                        setSubjectId(String(subject.id));
-                        setSubjectNombre(subject.nombre_canonico);
-                      }}
-                    >
-                      {subject.nombre_canonico}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <BuscadorSubjectAsync seleccionado={subjectElegido} onSeleccionar={setSubjectElegido} />
             </div>
           )}
 

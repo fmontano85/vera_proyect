@@ -18,15 +18,6 @@ use Stancl\Tenancy\Database\Models\Tenant;
  * Bandejas: sin_propuesta (el analista debe proponer) y
  * esperan_resolucion (el oficial debe resolver, seccion 3.2).
  */
-function usuarioDashboardConRol(Tenant $tenant, string $rol): User
-{
-    $user = User::factory()->create();
-    $user->forceFill(['tenant_id' => $tenant->id])->save();
-    $user->assignRole($rol);
-
-    return $user;
-}
-
 /** @param array<string, mixed> $match */
 function coincidenciaEn(Tenant $tenant, array $match = [], ?Subject $subject = null, ?Mention $mention = null): MentionMatch
 {
@@ -49,7 +40,7 @@ afterEach(function () {
 
 it('bandeja sin_propuesta: solo pendientes sin propuesta, las mas antiguas primero, con su contexto', function () {
     $tenant = Tenant::create();
-    $user = usuarioDashboardConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
 
     Carbon::setTestNow('2026-09-20 10:00:00');
     $vieja = coincidenciaEn($tenant);
@@ -71,8 +62,8 @@ it('bandeja sin_propuesta: solo pendientes sin propuesta, las mas antiguas prime
 
 it('bandeja esperan_resolucion: pendientes con propuesta, con quien propuso', function () {
     $tenant = Tenant::create();
-    $user = usuarioDashboardConRol($tenant, 'oficial_cumplimiento');
-    $analista = usuarioDashboardConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'oficial_cumplimiento');
+    $analista = usuarioDeTenant($tenant, 'analista');
     coincidenciaEn($tenant);
     $propuesta = coincidenciaEn($tenant, [
         'propuesta_estado' => 'falso_positivo',
@@ -91,7 +82,7 @@ it('bandeja esperan_resolucion: pendientes con propuesta, con quien propuso', fu
 
 it('no muestra coincidencias de otro tenant', function () {
     $tenant = Tenant::create();
-    $user = usuarioDashboardConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     coincidenciaEn(Tenant::create());
 
     $this->actingAs($user)->getJson('/api/coincidencias?bandeja=sin_propuesta')->assertJsonCount(0, 'data');
@@ -100,7 +91,7 @@ it('no muestra coincidencias de otro tenant', function () {
 it('no expone el search_result de otro tenant a traves de una mencion compartida (articles/mentions son globales)', function () {
     $tenantA = Tenant::create();
     $tenantB = Tenant::create();
-    $userB = usuarioDashboardConRol($tenantB, 'lectura');
+    $userB = usuarioDeTenant($tenantB, 'lectura');
 
     // La mencion salio de un search_result del tenant A (el primero que
     // encontro el articulo); el tenant B tiene su propio match sobre ella.
@@ -117,7 +108,7 @@ it('no expone el search_result de otro tenant a traves de una mencion compartida
 });
 
 it('rechaza una bandeja invalida', function () {
-    $user = usuarioDashboardConRol(Tenant::create(), 'lectura');
+    $user = usuarioDeTenant(Tenant::create(), 'lectura');
 
     $this->actingAs($user)->getJson('/api/coincidencias?bandeja=otra')->assertUnprocessable();
 });
@@ -125,7 +116,7 @@ it('rechaza una bandeja invalida', function () {
 it('el resumen del inicio cuenta coincidencias, seguimientos y resultados en GAP del tenant', function () {
     Carbon::setTestNow('2026-09-25 15:00:00');
     $tenant = Tenant::create();
-    $user = usuarioDashboardConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
 
     coincidenciaEn($tenant);
     coincidenciaEn($tenant);

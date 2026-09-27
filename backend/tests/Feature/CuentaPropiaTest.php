@@ -21,6 +21,17 @@ function cuenta(string $rol = 'analista', bool $conTenant = true): User
 
 beforeEach(fn () => $this->seed(RoleSeeder::class));
 
+it('un usuario desactivado no puede usar /cuenta aunque conserve una sesion viva', function () {
+    $user = cuenta();
+    $user->forceFill(['activo' => false])->save();
+
+    $this->actingAs($user)->getJson('/api/user')->assertUnauthorized();
+    $this->actingAs($user)->patchJson('/api/cuenta', ['name' => 'x'])->assertUnauthorized();
+    $this->actingAs($user)->postJson('/api/cuenta/contrasena', [
+        'contrasena_actual' => 'clave-actual-123', 'contrasena' => 'otra-clave-larga-456', 'contrasena_confirmation' => 'otra-clave-larga-456',
+    ])->assertUnauthorized();
+});
+
 it('cambia la contrasena con la actual correcta y cierra las demas sesiones', function () {
     $user = cuenta();
     DB::table('sessions')->insert(['id' => 'otra', 'user_id' => $user->id, 'payload' => '', 'last_activity' => time()]);

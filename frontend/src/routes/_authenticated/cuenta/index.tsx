@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCurrentUser } from '@/features/auth/useAuth';
+import { CampoContrasena } from '@/features/usuarios/CampoContrasena';
 import { useActualizarCuenta, useCambiarContrasena } from '@/features/usuarios/useUsuarios';
 import { mensajeApi } from '@/lib/api';
 
@@ -100,15 +101,22 @@ function FormularioContrasena() {
             );
           }}
         >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="cuenta-actual">Contraseña actual</Label>
-            <Input id="cuenta-actual" type="password" autoComplete="current-password" required value={actual} onChange={(e) => setActual(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="cuenta-nueva">Nueva contraseña</Label>
-            <Input id="cuenta-nueva" type="password" autoComplete="new-password" required minLength={12} value={nueva} onChange={(e) => setNueva(e.target.value)} />
-            <p className="text-muted-foreground text-xs">Mínimo 12 caracteres, con letras y números.</p>
-          </div>
+          <CampoContrasena
+            id="cuenta-actual"
+            label="Contraseña actual"
+            autoComplete="current-password"
+            required
+            value={actual}
+            onChange={setActual}
+          />
+          <CampoContrasena
+            id="cuenta-nueva"
+            label="Nueva contraseña"
+            autoComplete="new-password"
+            required
+            value={nueva}
+            onChange={setNueva}
+          />
           <div className="flex flex-col gap-2">
             <Label htmlFor="cuenta-confirmacion">Confirmar nueva contraseña</Label>
             <Input id="cuenta-confirmacion" type="password" autoComplete="new-password" required value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} />

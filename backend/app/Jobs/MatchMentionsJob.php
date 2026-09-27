@@ -8,6 +8,7 @@ use App\Models\Mention;
 use App\Models\MentionMatch;
 use App\Models\Subject;
 use App\Services\Matching\NameNormalizer;
+use App\Services\Matching\PuntajeMeilisearch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -55,7 +56,7 @@ class MatchMentionsJob implements ShouldQueue
                         'subject_id' => $hit['id'],
                     ],
                     [
-                        'score_meilisearch' => round(($hit['_rankingScore'] ?? 0) * 100, 2),
+                        'score_meilisearch' => PuntajeMeilisearch::desdeHit($hit),
                         'estado' => 'pendiente',
                     ],
                 );

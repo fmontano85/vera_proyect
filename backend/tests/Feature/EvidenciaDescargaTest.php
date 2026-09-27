@@ -11,15 +11,6 @@ use Database\Seeders\RoleSeeder;
 use Illuminate\Support\Facades\Storage;
 use Stancl\Tenancy\Database\Models\Tenant;
 
-function usuarioEvidencia(Tenant $tenant, string $rol): User
-{
-    $user = User::factory()->create();
-    $user->forceFill(['tenant_id' => $tenant->id])->save();
-    $user->assignRole($rol);
-
-    return $user;
-}
-
 function resultadoConEvidencia(Tenant $tenant): SearchResult
 {
     tenancy()->initialize($tenant);
@@ -47,7 +38,7 @@ beforeEach(function () {
 
 it('descarga el snapshot HTML como adjunto, nunca renderizado inline', function () {
     $tenant = Tenant::create();
-    $user = usuarioEvidencia($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     $resultado = resultadoConEvidencia($tenant);
 
     $respuesta = $this->actingAs($user)->get("/api/resultados/{$resultado->id}/evidencia/snapshot");
@@ -61,7 +52,7 @@ it('descarga el snapshot HTML como adjunto, nunca renderizado inline', function 
 
 it('expone Content-Disposition al frontend via CORS - sin esto el navegador guarda el archivo sin nombre', function () {
     $tenant = Tenant::create();
-    $user = usuarioEvidencia($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     $resultado = resultadoConEvidencia($tenant);
 
     $respuesta = $this->actingAs($user)
@@ -74,7 +65,7 @@ it('expone Content-Disposition al frontend via CORS - sin esto el navegador guar
 
 it('descarga el PDF de captura manual', function () {
     $tenant = Tenant::create();
-    $user = usuarioEvidencia($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $resultado = resultadoConEvidencia($tenant);
 
     $respuesta = $this->actingAs($user)->get("/api/resultados/{$resultado->id}/evidencia/manual");
@@ -86,7 +77,7 @@ it('descarga el PDF de captura manual', function () {
 
 it('404 si el resultado no tiene esa evidencia', function () {
     $tenant = Tenant::create();
-    $user = usuarioEvidencia($tenant, 'admin');
+    $user = usuarioDeTenant($tenant, 'admin');
     tenancy()->initialize($tenant);
     $resultado = SearchResult::factory()->for(Subject::factory()->create(), 'subject')->create();
     tenancy()->end();
@@ -97,7 +88,7 @@ it('404 si el resultado no tiene esa evidencia', function () {
 
 it('404 con un tipo de evidencia que no existe', function () {
     $tenant = Tenant::create();
-    $user = usuarioEvidencia($tenant, 'admin');
+    $user = usuarioDeTenant($tenant, 'admin');
     $resultado = resultadoConEvidencia($tenant);
 
     $this->actingAs($user)->get("/api/resultados/{$resultado->id}/evidencia/otro")->assertNotFound();
@@ -106,7 +97,7 @@ it('404 con un tipo de evidencia que no existe', function () {
 it('un usuario de otro tenant no puede descargar la evidencia', function () {
     $tenantA = Tenant::create();
     $tenantB = Tenant::create();
-    $intruso = usuarioEvidencia($tenantB, 'admin');
+    $intruso = usuarioDeTenant($tenantB, 'admin');
     $resultado = resultadoConEvidencia($tenantA);
 
     $this->actingAs($intruso)->get("/api/resultados/{$resultado->id}/evidencia/snapshot")->assertNotFound();

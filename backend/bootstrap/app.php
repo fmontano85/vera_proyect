@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'tenant' => \App\Http\Middleware\InitializeTenancyFromAuthenticatedUser::class,
+            'activo' => \App\Http\Middleware\EnsureUserIsActive::class,
         ]);
 
         // SubstituteBindings (binding implicito de modelos en rutas, ej.

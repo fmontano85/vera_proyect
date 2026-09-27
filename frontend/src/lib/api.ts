@@ -33,6 +33,20 @@ async function ensureCsrfCookie(): Promise<void> {
   await fetch(`${API_URL}/sanctum/csrf-cookie`, { credentials: 'include' });
 }
 
+/** Shape comun del cuerpo de error que devuelve la API (validation.php /
+ * respuestas 422/403/503 con `mensaje`). Compartido por request() y
+ * download() para que ambos muestren el mismo mensaje real del backend
+ * en vez de que uno lo ignore. */
+interface CuerpoError {
+  message?: string;
+  mensaje?: string;
+  errors?: Record<string, string[]>;
+}
+
+function construirApiError(status: number, data?: CuerpoError): ApiError {
+  return new ApiError((data?.message ?? data?.mensaje) ?? 'Error de red', status, data?.errors);
+}
+
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown };
 
 async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
@@ -71,11 +85,7 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const data = isJson ? await response.json() : undefined;
 
   if (!response.ok) {
-    throw new ApiError(
-      (data && (data.message ?? data.mensaje)) ?? 'Error de red',
-      response.status,
-      data?.errors,
-    );
+    throw construirApiError(response.status, data);
   }
 
   return data as T;
@@ -91,20 +101,26 @@ async function download(path: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new ApiError(
-      response.status === 404 ? 'La evidencia no está disponible.' : 'No se pudo descargar el archivo.',
-      response.status,
-    );
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const data: CuerpoError | undefined = isJson ? await response.json().catch(() => undefined) : undefined;
+    // Fallback solo si el backend no mando su propio mensaje (ej. 404 sin cuerpo).
+    throw construirApiError(response.status, data ?? { mensaje: 'No se pudo descargar el archivo.' });
   }
 
   const nombre =
     response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/)?.[1] ?? 'evidencia';
   const url = URL.createObjectURL(await response.blob());
+  // El enlace debe estar en el DOM para que el click() dispare la descarga
+  // en todos los navegadores; revocar la URL en el mismo tick que el click,
+  // antes de que el navegador haya empezado a leerla, puede perder la
+  // descarga en silencio (sin toast.error: el fetch ya resolvio bien).
   const enlace = document.createElement('a');
   enlace.href = url;
   enlace.download = nombre;
+  document.body.appendChild(enlace);
   enlace.click();
-  URL.revokeObjectURL(url);
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export const api = {

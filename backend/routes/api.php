@@ -22,10 +22,10 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 
-Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'me']);
+Route::middleware(['auth:sanctum', 'activo'])->get('/user', [AuthController::class, 'me']);
 
 // Cuenta propia: cualquier usuario autenticado (incluido superadmin), sin tenant.
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'activo'])->group(function () {
     Route::patch('cuenta', [CuentaController::class, 'actualizar']);
     Route::post('cuenta/contrasena', [CuentaController::class, 'cambiarContrasena'])->middleware('throttle:5,1');
 });

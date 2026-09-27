@@ -9,22 +9,13 @@ use Illuminate\Support\Facades\Hash;
 use Spatie\Activitylog\Models\Activity;
 use Stancl\Tenancy\Database\Models\Tenant;
 
-function usuarioTenant(Tenant $tenant, string $rol, array $atributos = []): User
-{
-    $user = User::factory()->create($atributos);
-    $user->forceFill(['tenant_id' => $tenant->id])->save();
-    $user->assignRole($rol);
-
-    return $user;
-}
-
 const CLAVE_VALIDA = 'una-clave-larga-123';
 
 beforeEach(fn () => $this->seed(RoleSeeder::class));
 
 it('solo admin gestiona usuarios', function (string $rol) {
     $tenant = Tenant::create();
-    $user = usuarioTenant($tenant, $rol);
+    $user = usuarioDeTenant($tenant, $rol);
 
     $this->actingAs($user)->getJson('/api/usuarios')->assertForbidden();
     $this->actingAs($user)->postJson('/api/usuarios', [])->assertForbidden();
@@ -34,9 +25,9 @@ it('solo admin gestiona usuarios', function (string $rol) {
 it('lista solo los usuarios del propio tenant, con rol y estado, sin datos sensibles', function () {
     $tenant = Tenant::create();
     $otro = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
-    usuarioTenant($tenant, 'analista', ['name' => 'Zoe Analista']);
-    usuarioTenant($otro, 'admin', ['name' => 'Intruso Ajeno']);
+    $admin = usuarioDeTenant($tenant, 'admin');
+    usuarioDeTenant($tenant, 'analista', ['name' => 'Zoe Analista']);
+    usuarioDeTenant($otro, 'admin', ['name' => 'Intruso Ajeno']);
 
     $respuesta = $this->actingAs($admin)->getJson('/api/usuarios')->assertOk();
 
@@ -48,7 +39,7 @@ it('lista solo los usuarios del propio tenant, con rol y estado, sin datos sensi
 
 it('admin crea un usuario en su tenant con rol y contrasena; queda auditado sin la contrasena', function () {
     $tenant = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
+    $admin = usuarioDeTenant($tenant, 'admin');
 
     $respuesta = $this->actingAs($admin)->postJson('/api/usuarios', [
         'name' => 'Nuevo Analista',
@@ -70,7 +61,7 @@ it('admin crea un usuario en su tenant con rol y contrasena; queda auditado sin 
 it('nunca deja crear un superadmin ni un rol inexistente, ni fijar el tenant desde el body', function () {
     $tenant = Tenant::create();
     $otro = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
+    $admin = usuarioDeTenant($tenant, 'admin');
 
     $base = ['name' => 'X', 'email' => 'x@vera.test', 'password' => CLAVE_VALIDA];
     $this->actingAs($admin)->postJson('/api/usuarios', [...$base, 'rol' => 'superadmin'])->assertUnprocessable();
@@ -82,8 +73,8 @@ it('nunca deja crear un superadmin ni un rol inexistente, ni fijar el tenant des
 
 it('exige contrasena fuerte y email unico', function () {
     $tenant = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
-    $existente = usuarioTenant($tenant, 'lectura');
+    $admin = usuarioDeTenant($tenant, 'admin');
+    $existente = usuarioDeTenant($tenant, 'lectura');
 
     $base = ['name' => 'X', 'email' => 'x@vera.test', 'rol' => 'lectura'];
     $this->actingAs($admin)->postJson('/api/usuarios', [...$base, 'password' => 'corta1'])->assertUnprocessable()->assertJsonValidationErrors('password');
@@ -94,8 +85,8 @@ it('exige contrasena fuerte y email unico', function () {
 
 it('admin cambia el rol, nombre y contrasena de otro usuario; el cambio de rol y el reinicio quedan auditados', function () {
     $tenant = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
-    $objetivo = usuarioTenant($tenant, 'lectura');
+    $admin = usuarioDeTenant($tenant, 'admin');
+    $objetivo = usuarioDeTenant($tenant, 'lectura');
 
     $this->actingAs($admin)->patchJson("/api/usuarios/{$objetivo->id}", [
         'name' => 'Nombre Nuevo', 'rol' => 'oficial_cumplimiento', 'password' => CLAVE_VALIDA,
@@ -111,8 +102,8 @@ it('admin cambia el rol, nombre y contrasena de otro usuario; el cambio de rol y
 
 it('desactivar cierra sus sesiones y tokens; un usuario inactivo no puede iniciar sesion ni usar la API', function () {
     $tenant = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
-    $objetivo = usuarioTenant($tenant, 'analista', ['password' => Hash::make(CLAVE_VALIDA)]);
+    $admin = usuarioDeTenant($tenant, 'admin');
+    $objetivo = usuarioDeTenant($tenant, 'analista', ['password' => Hash::make(CLAVE_VALIDA)]);
     $objetivo->createToken('t');
     DB::table('sessions')->insert(['id' => 'abc', 'user_id' => $objetivo->id, 'payload' => '', 'last_activity' => time()]);
 
@@ -127,7 +118,7 @@ it('desactivar cierra sus sesiones y tokens; un usuario inactivo no puede inicia
 
 it('al restablecer su propia contrasena desde /usuarios, el admin no cierra la sesion que hizo el request', function () {
     $tenant = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
+    $admin = usuarioDeTenant($tenant, 'admin');
     DB::table('sessions')->insert(['id' => 'sesion-actual', 'user_id' => $admin->id, 'payload' => '', 'last_activity' => time()]);
     DB::table('sessions')->insert(['id' => 'otra-sesion', 'user_id' => $admin->id, 'payload' => '', 'last_activity' => time()]);
 
@@ -139,7 +130,7 @@ it('al restablecer su propia contrasena desde /usuarios, el admin no cierra la s
 
 it('un admin no puede quitarse su propio rol ni desactivarse (evita quedar sin acceso)', function () {
     $tenant = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
+    $admin = usuarioDeTenant($tenant, 'admin');
 
     $this->actingAs($admin)->patchJson("/api/usuarios/{$admin->id}", ['rol' => 'lectura'])->assertUnprocessable();
     $this->actingAs($admin)->patchJson("/api/usuarios/{$admin->id}", ['activo' => false])->assertUnprocessable();
@@ -149,8 +140,8 @@ it('un admin no puede quitarse su propio rol ni desactivarse (evita quedar sin a
 it('no se puede tocar a un usuario de otro tenant ni a un superadmin', function () {
     $tenant = Tenant::create();
     $otro = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
-    $ajeno = usuarioTenant($otro, 'analista');
+    $admin = usuarioDeTenant($tenant, 'admin');
+    $ajeno = usuarioDeTenant($otro, 'analista');
     $super = User::factory()->create();
     $super->assignRole('superadmin');
 
@@ -161,8 +152,8 @@ it('no se puede tocar a un usuario de otro tenant ni a un superadmin', function 
 
 it('un PATCH vacio o sin campos validos se rechaza', function () {
     $tenant = Tenant::create();
-    $admin = usuarioTenant($tenant, 'admin');
-    $objetivo = usuarioTenant($tenant, 'lectura');
+    $admin = usuarioDeTenant($tenant, 'admin');
+    $objetivo = usuarioDeTenant($tenant, 'lectura');
 
     $this->actingAs($admin)->patchJson("/api/usuarios/{$objetivo->id}", [])->assertUnprocessable();
 });

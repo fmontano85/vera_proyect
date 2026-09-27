@@ -12,6 +12,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CampoContrasena } from '@/features/usuarios/CampoContrasena';
 import { ROLES_ASIGNABLES, useActualizarUsuario, useCrearUsuario } from '@/features/usuarios/useUsuarios';
 import { mensajeApi } from '@/lib/api';
 import type { Rol, UsuarioTenant } from '@/types/api';
@@ -110,20 +111,17 @@ export function UsuarioDialog({
               </Select>
               {esUnoMismo && <p className="text-muted-foreground text-xs">No puedes cambiar tu propio rol.</p>}
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="usuario-password">{usuario ? 'Nueva contraseña (opcional)' : 'Contraseña inicial'}</Label>
-              <Input
+            <div>
+              <CampoContrasena
                 id="usuario-password"
-                type="password"
+                label={usuario ? 'Nueva contraseña (opcional)' : 'Contraseña inicial'}
                 autoComplete="new-password"
                 required={!usuario}
-                minLength={12}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={setPassword}
               />
-              <p className="text-muted-foreground text-xs">Mínimo 12 caracteres, con letras y números.</p>
               {esUnoMismo && (
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground mt-1 text-xs">
                   Cambia tu contraseña sin cerrar tu sesión actual.
                 </p>
               )}

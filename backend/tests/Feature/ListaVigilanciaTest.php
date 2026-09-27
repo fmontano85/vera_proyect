@@ -24,15 +24,6 @@ use Stancl\Tenancy\Database\Models\Tenant;
  * no responde no se guarda nada (nunca un indice desactualizado en
  * silencio).
  */
-function usuarioListaConRol(Tenant $tenant, string $rol): User
-{
-    $user = User::factory()->create();
-    $user->forceFill(['tenant_id' => $tenant->id])->save();
-    $user->assignRole($rol);
-
-    return $user;
-}
-
 function subjectEnTenant(Tenant $tenant, array $atributos = [], array $aliases = []): Subject
 {
     tenancy()->initialize($tenant);
@@ -71,7 +62,7 @@ beforeEach(function () {
 
 it('lista solo activos por defecto, con cantidad de aliases y bloque de seguimiento', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     $activo = subjectEnTenant($tenant, ['nombre_canonico' => 'Ana Activa'], ['Anita', 'A. Activa']);
     subjectEnTenant($tenant, ['nombre_canonico' => 'Ines Inactiva', 'activo' => false]);
 
@@ -85,7 +76,7 @@ it('lista solo activos por defecto, con cantidad de aliases y bloque de seguimie
 
 it('filtra por estado, nivel y busca por nombre o alias', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     $alto = subjectEnTenant($tenant, ['nombre_canonico' => 'Roberto Alto', 'nivel_riesgo' => 'alto'], ['El Tigre']);
     $bajo = subjectEnTenant($tenant, ['nombre_canonico' => 'Maria Baja', 'nivel_riesgo' => 'bajo']);
     $inactivo = subjectEnTenant($tenant, ['nombre_canonico' => 'Pedro Inactivo', 'activo' => false]);
@@ -99,7 +90,7 @@ it('filtra por estado, nivel y busca por nombre o alias', function () {
 
 it('la busqueda trata % y _ como texto, no como comodines', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     subjectEnTenant($tenant, ['nombre_canonico' => 'Juan Perez']);
 
     $this->actingAs($user)->getJson('/api/subjects?buscar=%25')->assertJsonCount(0, 'data');
@@ -108,7 +99,7 @@ it('la busqueda trata % y _ como texto, no como comodines', function () {
 
 it('no lista subjects de otro tenant aunque coincida la busqueda', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     subjectEnTenant(Tenant::create(), ['nombre_canonico' => 'Ajeno Perez']);
 
     $this->actingAs($user)->getJson('/api/subjects?buscar=ajeno&estado=todos')->assertJsonCount(0, 'data');
@@ -118,7 +109,7 @@ it('no lista subjects de otro tenant aunque coincida la busqueda', function () {
 
 it('el alta acepta aliases, los guarda en la misma transaccion y el subject queda buscable por alias en Meilisearch', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
 
     $respuesta = $this->actingAs($user)->postJson('/api/subjects', [
         'tipo' => 'natural',
@@ -138,7 +129,7 @@ it('el alta acepta aliases, los guarda en la misma transaccion y el subject qued
 });
 
 it('el alta rechaza aliases repetidos', function () {
-    $user = usuarioListaConRol(Tenant::create(), 'analista');
+    $user = usuarioDeTenant(Tenant::create(), 'analista');
 
     $this->actingAs($user)->postJson('/api/subjects', [
         'tipo' => 'natural',
@@ -151,7 +142,7 @@ it('el alta rechaza aliases repetidos', function () {
 
 it('analista edita nombre, tipo y documento; queda auditado', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant, ['nombre_canonico' => 'Jose Perz', 'tipo' => 'natural']);
 
     $this->actingAs($user)
@@ -173,8 +164,8 @@ it('analista edita nombre, tipo y documento; queda auditado', function () {
 
 it('analista no puede activar ni desactivar; oficial si, y queda auditado', function () {
     $tenant = Tenant::create();
-    $analista = usuarioListaConRol($tenant, 'analista');
-    $oficial = usuarioListaConRol($tenant, 'oficial_cumplimiento');
+    $analista = usuarioDeTenant($tenant, 'analista');
+    $oficial = usuarioDeTenant($tenant, 'oficial_cumplimiento');
     $subject = subjectEnTenant($tenant);
 
     $this->actingAs($analista)->patchJson("/api/subjects/{$subject->id}", ['activo' => false])->assertForbidden();
@@ -193,7 +184,7 @@ it('analista no puede activar ni desactivar; oficial si, y queda auditado', func
 
 it('lectura no puede editar datos del subject', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     $subject = subjectEnTenant($tenant);
 
     $this->actingAs($user)->patchJson("/api/subjects/{$subject->id}", ['nombre_canonico' => 'X'])->assertForbidden();
@@ -203,7 +194,7 @@ it('lectura no puede editar datos del subject', function () {
 
 it('agregar un alias lo guarda, lo audita y reindexa al subject en Meilisearch', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant, ['nombre_canonico' => 'Wilfredo Antonio Zelaya']);
 
     $this->actingAs($user)
@@ -221,7 +212,7 @@ it('agregar un alias lo guarda, lo audita y reindexa al subject en Meilisearch',
 
 it('quitar un alias lo borra, lo audita y reindexa sin ese alias', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant, ['nombre_canonico' => 'Heriberto Quintanilla Soto'], ['El Guero Quintanilla']);
     tenancy()->initialize($tenant);
     $alias = SubjectAlias::where('subject_id', $subject->id)->sole();
@@ -243,7 +234,7 @@ it('quitar un alias lo borra, lo audita y reindexa sin ese alias', function () {
 
 it('rechaza un alias repetido para el mismo subject', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant, [], ['Chepe']);
 
     $this->actingAs($user)
@@ -254,7 +245,7 @@ it('rechaza un alias repetido para el mismo subject', function () {
 
 it('no permite quitar un alias usando el id de un subject distinto', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subjectA = subjectEnTenant($tenant, [], ['Alias de A']);
     $subjectB = subjectEnTenant($tenant);
     tenancy()->initialize($tenant);
@@ -266,8 +257,8 @@ it('no permite quitar un alias usando el id de un subject distinto', function ()
 
 it('lectura no puede agregar aliases y no se tocan aliases de otro tenant', function () {
     $tenant = Tenant::create();
-    $lectura = usuarioListaConRol($tenant, 'lectura');
-    $analista = usuarioListaConRol($tenant, 'analista');
+    $lectura = usuarioDeTenant($tenant, 'lectura');
+    $analista = usuarioDeTenant($tenant, 'analista');
     $propio = subjectEnTenant($tenant);
     $ajeno = subjectEnTenant(Tenant::create());
 
@@ -277,7 +268,7 @@ it('lectura no puede agregar aliases y no se tocan aliases de otro tenant', func
 
 it('si Meilisearch no responde, agregar un alias falla con 503 y no guarda nada', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant);
 
     config(['scout.meilisearch.host' => 'http://127.0.0.1:1']);
@@ -297,7 +288,7 @@ it('si Meilisearch no responde, agregar un alias falla con 503 y no guarda nada'
 
 it('analista puede mandar activo sin cambiarlo junto con otros campos (solo cambiarlo exige oficial/admin)', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant, ['nombre_canonico' => 'Nombre Viejo']);
 
     $this->actingAs($user)
@@ -308,7 +299,7 @@ it('analista puede mandar activo sin cambiarlo junto con otros campos (solo camb
 
 it('un alias repetido enviado en carrera responde 422, no 500', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant);
 
     // Simula la carrera: el alias aparece en la BD despues de la validacion
@@ -330,7 +321,7 @@ it('un alias repetido enviado en carrera responde 422, no 500', function () {
 
 it('no permite mas de 20 aliases por subject ni un alias igual al nombre canonico', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant, ['nombre_canonico' => 'Juan Perez'], array_map(fn ($i) => "Alias {$i}", range(1, 20)));
     $otro = subjectEnTenant($tenant, ['nombre_canonico' => 'Maria Lopez']);
 
@@ -342,7 +333,7 @@ it('no permite mas de 20 aliases por subject ni un alias igual al nombre canonic
 
 it('pagina de forma estable entre homonimos (desempate por id)', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     $ids = collect(range(1, 20))->map(fn () => subjectEnTenant($tenant, ['nombre_canonico' => 'Jose Hernandez'])->id);
 
     $pagina1 = $this->actingAs($user)->getJson('/api/subjects?page=1')->json('data.*.id');
@@ -353,7 +344,7 @@ it('pagina de forma estable entre homonimos (desempate por id)', function () {
 
 it('encuentra nombres que contienen % o _ buscandolos literalmente', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura');
     $porcentaje = subjectEnTenant($tenant, ['nombre_canonico' => 'Inversiones 100% Seguras']);
     $guion = subjectEnTenant($tenant, ['nombre_canonico' => 'Grupo_Norte']);
     subjectEnTenant($tenant, ['nombre_canonico' => 'Grupo Norte Dos']);
@@ -393,7 +384,7 @@ it('la reconciliacion queda programada diariamente', function () {
 
 it('los errores de validacion se devuelven en espanol (la interfaz los muestra tal cual)', function () {
     $tenant = Tenant::create();
-    $user = usuarioListaConRol($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
     $subject = subjectEnTenant($tenant, [], ['Chepe']);
 
     $this->actingAs($user)

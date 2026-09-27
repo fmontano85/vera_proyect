@@ -10,6 +10,8 @@ use App\Actions\SearchResults\ExtraerResultado;
 use App\Http\Requests\CapturaManualRequest;
 use App\Models\SearchResult;
 use App\Models\Subject;
+use App\Support\DescargaSegura;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -94,37 +96,36 @@ class SearchResultController extends Controller
     }
 
     /**
-     * Descarga de evidencia (seccion 3.6). El snapshot HTML es contenido de
-     * terceros: se sirve SIEMPRE como adjunto text/plain con nosniff para
-     * que el navegador nunca lo renderice ni ejecute su JavaScript desde
-     * el origen de la API (XSS almacenado, OWASP A03). El aislamiento de
-     * tenant lo da el route-model-binding (SearchResult tiene scope).
+     * Descarga de evidencia (seccion 3.6). El aislamiento de tenant lo da
+     * el route-model-binding (SearchResult tiene scope). La mitigacion de
+     * XSS (attachment + nosniff, Content-Type inerte para el snapshot)
+     * vive en App\Support\DescargaSegura, compartida con cualquier futuro
+     * endpoint que sirva contenido guardado.
      */
     public function evidencia(SearchResult $resultado, string $tipo): StreamedResponse
     {
         $this->authorize('view', $resultado);
 
-        [$disco, $path, $mime, $nombre] = match ($tipo) {
-            'snapshot' => [
+        return match ($tipo) {
+            'snapshot' => DescargaSegura::deTercero(
                 Storage::disk(),
-                $resultado->article?->evidence_path,
-                'text/plain; charset=UTF-8',
+                $this->rutaOFallar($resultado->article?->evidence_path, Storage::disk()),
                 "evidencia-{$resultado->id}-snapshot.html.txt",
-            ],
-            'manual' => [
+            ),
+            'manual' => DescargaSegura::propia(
                 Storage::disk(config('vera.evidencia_manual_disk')),
-                $resultado->evidencia_manual_path,
-                'application/pdf',
+                $this->rutaOFallar($resultado->evidencia_manual_path, Storage::disk(config('vera.evidencia_manual_disk'))),
                 "evidencia-{$resultado->id}.pdf",
-            ],
-            default => abort(404),
+                'application/pdf',
+            ),
+            default => abort(404, 'Tipo de evidencia desconocido.'),
         };
+    }
 
-        abort_if($path === null || ! $disco->exists($path), 404);
+    private function rutaOFallar(?string $path, Filesystem $disco): string
+    {
+        abort_if($path === null || ! $disco->exists($path), 404, 'Esa evidencia no está disponible.');
 
-        return $disco->download($path, $nombre, [
-            'Content-Type' => $mime,
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return $path;
     }
 }

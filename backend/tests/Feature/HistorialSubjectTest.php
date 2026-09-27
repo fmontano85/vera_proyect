@@ -8,20 +8,11 @@ use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Stancl\Tenancy\Database\Models\Tenant;
 
-function usuarioHistorial(Tenant $tenant, string $rol): User
-{
-    $user = User::factory()->create(['name' => 'Ana Oficial']);
-    $user->forceFill(['tenant_id' => $tenant->id])->save();
-    $user->assignRole($rol);
-
-    return $user;
-}
-
 beforeEach(fn () => $this->seed(RoleSeeder::class));
 
 it('lista los cambios del sujeto, sus aliases (incluso borrados) y su seguimiento, del mas reciente al mas antiguo', function () {
     $tenant = Tenant::create();
-    $user = usuarioHistorial($tenant, 'lectura');
+    $user = usuarioDeTenant($tenant, 'lectura', ['name' => 'Ana Oficial']);
 
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create(['nivel_riesgo' => 'bajo']);
@@ -44,7 +35,7 @@ it('lista los cambios del sujeto, sus aliases (incluso borrados) y su seguimient
 
 it('no mezcla la actividad de otro sujeto del mismo tenant', function () {
     $tenant = Tenant::create();
-    $user = usuarioHistorial($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
 
     tenancy()->initialize($tenant);
     $a = Subject::factory()->create();
@@ -61,7 +52,7 @@ it('no mezcla la actividad de otro sujeto del mismo tenant', function () {
 it('un usuario de otro tenant recibe 404', function () {
     $tenantA = Tenant::create();
     $tenantB = Tenant::create();
-    $intruso = usuarioHistorial($tenantB, 'admin');
+    $intruso = usuarioDeTenant($tenantB, 'admin');
 
     tenancy()->initialize($tenantA);
     $subject = Subject::factory()->create();
@@ -72,7 +63,7 @@ it('un usuario de otro tenant recibe 404', function () {
 
 it('no expone correos ni datos del usuario, solo su nombre', function () {
     $tenant = Tenant::create();
-    $user = usuarioHistorial($tenant, 'admin');
+    $user = usuarioDeTenant($tenant, 'admin');
 
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create();

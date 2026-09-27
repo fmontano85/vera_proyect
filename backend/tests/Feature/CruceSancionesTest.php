@@ -39,15 +39,6 @@ function hallazgoSancion(array $atributos = [], ?SanctionEntry $entrada = null):
     return SanctionMatch::factory()->create([...$atributos, 'sanction_entry_id' => $entrada->id]);
 }
 
-function usuarioSanciones(Tenant $tenant, string $rol): User
-{
-    $user = User::factory()->create();
-    $user->forceFill(['tenant_id' => $tenant->id])->save();
-    $user->assignRole($rol);
-
-    return $user;
-}
-
 beforeEach(function () {
     $this->seed(RoleSeeder::class);
     config(['vera.sanciones_score_minimo' => 85]);
@@ -150,6 +141,24 @@ it('no cruza tenants: cada hallazgo queda en el tenant de su subject', function 
     tenancy()->end();
 });
 
+it('hace un solo request de multi-search a Meilisearch para nombre + aliases, no uno por nombre', function () {
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create();
+    SubjectAlias::factory()->for($subject, 'subject')->create();
+    SubjectAlias::factory()->for($subject, 'subject')->create();
+    $subject->load('aliases');
+
+    $client = Mockery::mock(\Meilisearch\Client::class);
+    $client->shouldReceive('multiSearch')->once()
+        ->withArgs(fn (array $consultas) => count($consultas) === 3)
+        ->andReturn(['results' => []]);
+
+    (new \App\Services\Sanctions\CruceSanciones($client))->cruzar($subject);
+
+    tenancy()->end();
+});
+
 it('MatchSanctionsJob usa la relacion aliases ya cargada, no una query por subject', function () {
     $tenant = Tenant::create();
     tenancy()->initialize($tenant);
@@ -174,7 +183,7 @@ it('un fallo real de Meilisearch al cruzar responde 503, no un error generico', 
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create();
     tenancy()->end();
-    $user = usuarioSanciones($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
 
     $mock = Mockery::mock(\App\Services\Sanctions\CruceSanciones::class);
     $mock->shouldReceive('cruzar')->once()->andThrow(
@@ -192,7 +201,7 @@ it('un error de codigo al cruzar (no de Meilisearch) no se disfraza de indice ca
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create();
     tenancy()->end();
-    $user = usuarioSanciones($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
 
     $mock = Mockery::mock(\App\Services\Sanctions\CruceSanciones::class);
     $mock->shouldReceive('cruzar')->once()->andThrow(new \TypeError('bug real'));
@@ -210,9 +219,9 @@ it('el endpoint cruza un subject bajo demanda; lectura no puede', function () {
     $subject = Subject::factory()->create(['nombre_canonico' => $nombre]);
     tenancy()->end();
 
-    $this->actingAs(usuarioSanciones($tenant, 'lectura'))->postJson("/api/subjects/{$subject->id}/sanciones/cruzar")->assertForbidden();
+    $this->actingAs(usuarioDeTenant($tenant, 'lectura'))->postJson("/api/subjects/{$subject->id}/sanciones/cruzar")->assertForbidden();
 
-    $this->actingAs(usuarioSanciones($tenant, 'analista'))->postJson("/api/subjects/{$subject->id}/sanciones/cruzar")
+    $this->actingAs(usuarioDeTenant($tenant, 'analista'))->postJson("/api/subjects/{$subject->id}/sanciones/cruzar")
         ->assertOk()->assertJsonPath('hallazgos_nuevos', 1);
 });
 
@@ -228,7 +237,7 @@ it('lista los hallazgos del tenant con la entrada de la lista, sin mezclar tenan
     hallazgoSancion();
     tenancy()->end();
 
-    $r = $this->actingAs(usuarioSanciones($a, 'lectura'))->getJson('/api/sanciones')->assertOk();
+    $r = $this->actingAs(usuarioDeTenant($a, 'lectura'))->getJson('/api/sanciones')->assertOk();
 
     expect($r->json('data'))->toHaveCount(1)
         ->and($r->json('data.0.entrada.nombre'))->toBe('Lista Nombre')
@@ -244,7 +253,7 @@ it('filtra por estado y por subject', function () {
     hallazgoSancion(['subject_id' => $s1->id, 'estado' => 'pendiente']);
     hallazgoSancion(['subject_id' => $s2->id, 'estado' => 'confirmado']);
     tenancy()->end();
-    $user = usuarioSanciones($tenant, 'analista');
+    $user = usuarioDeTenant($tenant, 'analista');
 
     expect($this->actingAs($user)->getJson('/api/sanciones?estado=pendiente')->json('data'))->toHaveCount(1);
     expect($this->actingAs($user)->getJson('/api/sanciones?estado=todos')->json('data'))->toHaveCount(2);
@@ -258,10 +267,10 @@ it('solo oficial_cumplimiento y admin resuelven; queda auditado con quien y cuan
     tenancy()->end();
 
     foreach (['analista', 'lectura'] as $rol) {
-        $this->actingAs(usuarioSanciones($tenant, $rol))->postJson("/api/sanciones/{$hallazgo->id}/resolver", ['estado' => 'confirmado'])->assertForbidden();
+        $this->actingAs(usuarioDeTenant($tenant, $rol))->postJson("/api/sanciones/{$hallazgo->id}/resolver", ['estado' => 'confirmado'])->assertForbidden();
     }
 
-    $oficial = usuarioSanciones($tenant, 'oficial_cumplimiento');
+    $oficial = usuarioDeTenant($tenant, 'oficial_cumplimiento');
     $this->actingAs($oficial)->postJson("/api/sanciones/{$hallazgo->id}/resolver", ['estado' => 'confirmado'])
         ->assertOk()->assertJsonPath('estado', 'confirmado');
 
@@ -278,7 +287,7 @@ it('rechaza resolver un hallazgo ya resuelto, un estado invalido y pendiente', f
     $resuelto = hallazgoSancion(['estado' => 'confirmado']);
     $pendiente = hallazgoSancion(['estado' => 'pendiente']);
     tenancy()->end();
-    $oficial = usuarioSanciones($tenant, 'oficial_cumplimiento');
+    $oficial = usuarioDeTenant($tenant, 'oficial_cumplimiento');
 
     $this->actingAs($oficial)->postJson("/api/sanciones/{$resuelto->id}/resolver", ['estado' => 'falso_positivo'])->assertUnprocessable();
     $this->actingAs($oficial)->postJson("/api/sanciones/{$pendiente->id}/resolver", ['estado' => 'pendiente'])->assertUnprocessable();
@@ -292,5 +301,5 @@ it('no se puede resolver un hallazgo de otro tenant', function () {
     $hallazgo = hallazgoSancion(['estado' => 'pendiente']);
     tenancy()->end();
 
-    $this->actingAs(usuarioSanciones($b, 'admin'))->postJson("/api/sanciones/{$hallazgo->id}/resolver", ['estado' => 'confirmado'])->assertNotFound();
+    $this->actingAs(usuarioDeTenant($b, 'admin'))->postJson("/api/sanciones/{$hallazgo->id}/resolver", ['estado' => 'confirmado'])->assertNotFound();
 });

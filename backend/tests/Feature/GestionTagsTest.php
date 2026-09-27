@@ -8,15 +8,6 @@ use Database\Seeders\RoleSeeder;
 use Spatie\Activitylog\Models\Activity;
 use Stancl\Tenancy\Database\Models\Tenant;
 
-function usuarioGestionTags(Tenant $tenant, string $rol): User
-{
-    $user = User::factory()->create();
-    $user->forceFill(['tenant_id' => $tenant->id])->save();
-    $user->assignRole($rol);
-
-    return $user;
-}
-
 function tagDe(Tenant $tenant, string $nombre, bool $activo = true): SearchTag
 {
     tenancy()->initialize($tenant);
@@ -30,7 +21,7 @@ beforeEach(fn () => $this->seed(RoleSeeder::class));
 
 it('oficial_cumplimiento y admin renombran y desactivan un tag, y queda auditado', function (string $rol) {
     $tenant = Tenant::create();
-    $user = usuarioGestionTags($tenant, $rol);
+    $user = usuarioDeTenant($tenant, $rol);
     $tag = tagDe($tenant, 'tag-gestion');
 
     $this->actingAs($user)->patchJson("/api/tags-busqueda/{$tag->id}", ['nombre' => 'renombrado', 'activo' => false])
@@ -42,7 +33,7 @@ it('oficial_cumplimiento y admin renombran y desactivan un tag, y queda auditado
 
 it('analista y lectura no pueden modificar el catalogo, pero analista si puede crear', function (string $rol) {
     $tenant = Tenant::create();
-    $user = usuarioGestionTags($tenant, $rol);
+    $user = usuarioDeTenant($tenant, $rol);
     $tag = tagDe($tenant, 'tag-gestion');
 
     $this->actingAs($user)->patchJson("/api/tags-busqueda/{$tag->id}", ['activo' => false])->assertForbidden();
@@ -51,7 +42,7 @@ it('analista y lectura no pueden modificar el catalogo, pero analista si puede c
 
 it('el listado normal solo trae activos; con todos=1 (gestion) trae tambien los inactivos', function () {
     $tenant = Tenant::create();
-    $user = usuarioGestionTags($tenant, 'oficial_cumplimiento');
+    $user = usuarioDeTenant($tenant, 'oficial_cumplimiento');
     tagDe($tenant, 'zzz-inactivo', false);
 
     $normal = collect($this->actingAs($user)->getJson('/api/tags-busqueda')->json())->pluck('nombre');
@@ -62,7 +53,7 @@ it('el listado normal solo trae activos; con todos=1 (gestion) trae tambien los 
 
 it('rechaza renombrar a un nombre que ya existe en el tenant, pero permite conservar el propio', function () {
     $tenant = Tenant::create();
-    $user = usuarioGestionTags($tenant, 'admin');
+    $user = usuarioDeTenant($tenant, 'admin');
     $a = tagDe($tenant, 'tag-a');
     tagDe($tenant, 'tag-b');
 
@@ -73,7 +64,7 @@ it('rechaza renombrar a un nombre que ya existe en el tenant, pero permite conse
 it('permite el mismo nombre en otro tenant', function () {
     $tenantA = Tenant::create();
     $tenantB = Tenant::create();
-    $user = usuarioGestionTags($tenantA, 'admin');
+    $user = usuarioDeTenant($tenantA, 'admin');
     tagDe($tenantB, 'exclusivo-b');
     $tag = tagDe($tenantA, 'tag-a');
 
@@ -83,7 +74,7 @@ it('permite el mismo nombre en otro tenant', function () {
 it('no se puede tocar un tag de otro tenant', function () {
     $tenantA = Tenant::create();
     $tenantB = Tenant::create();
-    $intruso = usuarioGestionTags($tenantB, 'admin');
+    $intruso = usuarioDeTenant($tenantB, 'admin');
     $tag = tagDe($tenantA, 'tag-a');
 
     $this->actingAs($intruso)->patchJson("/api/tags-busqueda/{$tag->id}", ['activo' => false])->assertNotFound();
@@ -91,7 +82,7 @@ it('no se puede tocar un tag de otro tenant', function () {
 
 it('exige al menos un campo y valida el largo del nombre', function () {
     $tenant = Tenant::create();
-    $user = usuarioGestionTags($tenant, 'admin');
+    $user = usuarioDeTenant($tenant, 'admin');
     $tag = tagDe($tenant, 'tag-a');
 
     $this->actingAs($user)->patchJson("/api/tags-busqueda/{$tag->id}", [])->assertUnprocessable();

@@ -122,6 +122,11 @@ export function UsuarioDialog({
                 onChange={(e) => setPassword(e.target.value)}
               />
               <p className="text-muted-foreground text-xs">Mínimo 12 caracteres, con letras y números.</p>
+              {esUnoMismo && (
+                <p className="text-muted-foreground text-xs">
+                  Cambia tu contraseña sin cerrar tu sesión actual.
+                </p>
+              )}
             </div>
           </div>
 

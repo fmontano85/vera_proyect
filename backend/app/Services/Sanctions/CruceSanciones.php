@@ -29,8 +29,11 @@ class CruceSanciones
         $minimo = (float) config('vera.sanciones_score_minimo');
         $nuevos = 0;
 
+        // Propiedad, no metodo: si el caller (MatchSanctionsJob) ya hizo
+        // with('aliases'), esto usa esa relacion cargada en vez de
+        // disparar una query nueva por cada subject.
         $nombres = collect([$subject->nombre_canonico])
-            ->merge($subject->aliases()->pluck('nombre'))
+            ->merge($subject->aliases->pluck('nombre'))
             ->unique();
 
         foreach ($nombres as $nombre) {

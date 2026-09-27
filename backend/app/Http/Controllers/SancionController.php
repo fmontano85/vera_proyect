@@ -13,8 +13,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Meilisearch\Exceptions\ExceptionInterface as MeilisearchException;
 use RuntimeException;
-use Throwable;
 
 /** Hallazgos contra listas de sanciones (OFAC SDN hoy). Delgado: la logica vive en Services/Actions. */
 class SancionController extends Controller
@@ -45,9 +45,12 @@ class SancionController extends Controller
         $this->authorize('view', $subject);
         Gate::authorize('cruzar', SanctionMatch::class);
 
+        // Solo un fallo real de Meilisearch se etiqueta como "indice no
+        // disponible" (503) - cualquier otra excepcion (un bug de codigo)
+        // debe verse como lo que es, no disfrazarse de caida de infra.
         try {
             $nuevos = $cruce->cruzar($subject);
-        } catch (Throwable $e) {
+        } catch (MeilisearchException $e) {
             report($e);
             throw new IndiceBusquedaNoDisponible('No se pudo consultar el índice de sanciones: '.$e->getMessage(), previous: $e);
         }

@@ -10,6 +10,7 @@ use App\Models\Subject;
 use App\Models\SubjectAlias;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
+use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\Models\Activity;
 use Stancl\Tenancy\Database\Models\Tenant;
 
@@ -147,6 +148,57 @@ it('no cruza tenants: cada hallazgo queda en el tenant de su subject', function 
     tenancy()->initialize($b);
     expect(SanctionMatch::count())->toBe(0);
     tenancy()->end();
+});
+
+it('MatchSanctionsJob usa la relacion aliases ya cargada, no una query por subject', function () {
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    Subject::factory()->count(3)->create();
+    tenancy()->end();
+
+    $consultasAliases = 0;
+    DB::listen(function ($query) use (&$consultasAliases) {
+        if (str_contains($query->sql, 'subject_aliases')) {
+            $consultasAliases++;
+        }
+    });
+
+    (new MatchSanctionsJob)->handle();
+
+    // 1 sola consulta de aliases (el eager load), no una por cada subject.
+    expect($consultasAliases)->toBe(1);
+});
+
+it('un fallo real de Meilisearch al cruzar responde 503, no un error generico', function () {
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create();
+    tenancy()->end();
+    $user = usuarioSanciones($tenant, 'analista');
+
+    $mock = Mockery::mock(\App\Services\Sanctions\CruceSanciones::class);
+    $mock->shouldReceive('cruzar')->once()->andThrow(
+        new \Meilisearch\Exceptions\CommunicationException('conexion caida')
+    );
+    $this->app->instance(\App\Services\Sanctions\CruceSanciones::class, $mock);
+
+    $this->actingAs($user)->postJson("/api/subjects/{$subject->id}/sanciones/cruzar")
+        ->assertStatus(503)
+        ->assertJsonPath('mensaje', fn ($m) => str_contains($m, 'índice de búsqueda no está disponible'));
+});
+
+it('un error de codigo al cruzar (no de Meilisearch) no se disfraza de indice caido', function () {
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create();
+    tenancy()->end();
+    $user = usuarioSanciones($tenant, 'analista');
+
+    $mock = Mockery::mock(\App\Services\Sanctions\CruceSanciones::class);
+    $mock->shouldReceive('cruzar')->once()->andThrow(new \TypeError('bug real'));
+    $this->app->instance(\App\Services\Sanctions\CruceSanciones::class, $mock);
+
+    $this->actingAs($user)->postJson("/api/subjects/{$subject->id}/sanciones/cruzar")->assertStatus(500);
 });
 
 it('el endpoint cruza un subject bajo demanda; lectura no puede', function () {

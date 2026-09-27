@@ -125,6 +125,18 @@ it('desactivar cierra sus sesiones y tokens; un usuario inactivo no puede inicia
     $this->actingAs($objetivo->refresh())->getJson('/api/subjects')->assertForbidden();
 });
 
+it('al restablecer su propia contrasena desde /usuarios, el admin no cierra la sesion que hizo el request', function () {
+    $tenant = Tenant::create();
+    $admin = usuarioTenant($tenant, 'admin');
+    DB::table('sessions')->insert(['id' => 'sesion-actual', 'user_id' => $admin->id, 'payload' => '', 'last_activity' => time()]);
+    DB::table('sessions')->insert(['id' => 'otra-sesion', 'user_id' => $admin->id, 'payload' => '', 'last_activity' => time()]);
+
+    (new App\Actions\Usuarios\ActualizarUsuario)->handle($admin, $admin, ['password' => CLAVE_VALIDA], 'sesion-actual');
+
+    expect(DB::table('sessions')->where('id', 'sesion-actual')->exists())->toBeTrue()
+        ->and(DB::table('sessions')->where('id', 'otra-sesion')->exists())->toBeFalse();
+});
+
 it('un admin no puede quitarse su propio rol ni desactivarse (evita quedar sin acceso)', function () {
     $tenant = Tenant::create();
     $admin = usuarioTenant($tenant, 'admin');

@@ -77,8 +77,15 @@ class UsuarioController extends Controller
             }
         }
 
+        // Al editarse a si mismo (ej. restablecer su propia contrasena),
+        // la sesion que hace el request no debe cerrarse - ver
+        // ActualizarUsuario::handle.
+        $exceptoSesion = $usuario->is($request->user()) && $request->hasSession()
+            ? $request->session()->getId()
+            : null;
+
         return response()->json($this->serializar(
-            $action->handle($usuario, $request->user(), $validated)->load('roles:id,name')
+            $action->handle($usuario, $request->user(), $validated, $exceptoSesion)->load('roles:id,name')
         ));
     }
 

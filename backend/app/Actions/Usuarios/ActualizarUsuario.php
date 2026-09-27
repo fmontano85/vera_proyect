@@ -11,10 +11,16 @@ class ActualizarUsuario
 {
     /**
      * @param  array{name?: string, rol?: string, activo?: bool, password?: string}  $datos
+     *
+     * $exceptoSesion: cuando el admin se edita a si mismo, la sesion que
+     * hace el request no debe cerrarse (mismo criterio que
+     * CuentaController::cambiarContrasena) - sin esto, un admin que se
+     * restablece su propia contrasena desde /usuarios queda deslogueado
+     * de inmediato por su propio cambio.
      */
-    public function handle(User $usuario, User $admin, array $datos): User
+    public function handle(User $usuario, User $admin, array $datos, ?string $exceptoSesion = null): User
     {
-        return DB::transaction(function () use ($usuario, $admin, $datos) {
+        return DB::transaction(function () use ($usuario, $admin, $datos, $exceptoSesion) {
             if (isset($datos['name'])) {
                 $usuario->name = $datos['name'];
             }
@@ -38,7 +44,7 @@ class ActualizarUsuario
 
             // Desactivar o cambiar la clave invalida lo que ya estaba abierto.
             if (($datos['activo'] ?? true) === false || isset($datos['password'])) {
-                self::cerrarSesiones($usuario);
+                self::cerrarSesiones($usuario, $exceptoSesion);
             }
 
             return $usuario->refresh();

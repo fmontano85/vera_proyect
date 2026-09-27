@@ -21,7 +21,14 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    /**
+     * Content-Disposition: sin exponerla, el fetch del frontend
+     * (lib/api.ts download()) nunca puede leer el nombre de archivo que
+     * manda el backend en un navegador real (fetch cross-origin solo
+     * expone los headers "CORS-safelisted" salvo que se listen aqui) -
+     * la descarga funciona pero se guarda sin nombre ni extension.
+     */
+    'exposed_headers' => ['Content-Disposition'],
 
     'max_age' => 0,
 

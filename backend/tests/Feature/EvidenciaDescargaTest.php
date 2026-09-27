@@ -59,6 +59,19 @@ it('descarga el snapshot HTML como adjunto, nunca renderizado inline', function 
     expect($respuesta->streamedContent())->toContain('contenido');
 });
 
+it('expone Content-Disposition al frontend via CORS - sin esto el navegador guarda el archivo sin nombre', function () {
+    $tenant = Tenant::create();
+    $user = usuarioEvidencia($tenant, 'lectura');
+    $resultado = resultadoConEvidencia($tenant);
+
+    $respuesta = $this->actingAs($user)
+        ->withHeaders(['Origin' => config('cors.allowed_origins')[0]])
+        ->get("/api/resultados/{$resultado->id}/evidencia/snapshot");
+
+    $respuesta->assertOk();
+    expect($respuesta->headers->get('access-control-expose-headers'))->toContain('Content-Disposition');
+});
+
 it('descarga el PDF de captura manual', function () {
     $tenant = Tenant::create();
     $user = usuarioEvidencia($tenant, 'analista');

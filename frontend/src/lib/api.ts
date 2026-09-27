@@ -81,10 +81,46 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   return data as T;
 }
 
+/** Descarga un archivo autenticado (cookies de Sanctum) y dispara el guardado
+ * del navegador. Se usa fetch + blob y no un <a href> porque la API vive en
+ * otro origen y la descarga necesita las credenciales de la sesion. */
+async function download(path: string): Promise<void> {
+  const response = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
+    headers: { Accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status === 404 ? 'La evidencia no está disponible.' : 'No se pudo descargar el archivo.',
+      response.status,
+    );
+  }
+
+  const nombre =
+    response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/)?.[1] ?? 'evidencia';
+  const url = URL.createObjectURL(await response.blob());
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombre;
+  enlace.click();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
+  download,
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
+
+/** Mensaje legible de un error de la API: el primer error de validacion
+ * de campo si lo hay (el backend los devuelve en espanol), si no el
+ * mensaje general. */
+export function mensajeApi(error: unknown, porDefecto: string): string {
+  if (!(error instanceof ApiError)) return porDefecto;
+  const primero = error.errors ? Object.values(error.errors)[0]?.[0] : undefined;
+  return primero ?? error.message ?? porDefecto;
+}

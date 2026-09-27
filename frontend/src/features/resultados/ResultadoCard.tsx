@@ -1,5 +1,5 @@
 import type { QueryKey } from '@tanstack/react-query';
-import { ExternalLink, Loader2 } from 'lucide-react';
+import { Download, ExternalLink, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { EstadoMatchBadge } from '@/components/EstadoMatchBadge';
@@ -13,7 +13,7 @@ import { puedeProponer, puedeResolver, useCurrentUser } from '@/features/auth/us
 import { MatchAcciones } from '@/features/coincidencias/MatchAcciones';
 import { useDescartar, useExtraer } from '@/features/resultados/useSearchResults';
 import { CapturaManualDialog } from '@/features/resultados/CapturaManualDialog';
-import { ApiError } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { Mention, SearchResult } from '@/types/api';
 
 /** queryKey en vez de un subjectId fijo: esta tarjeta se reutiliza tal
@@ -47,7 +47,17 @@ export function ResultadoCard({
     });
   }
 
+  function handleDescargar(tipo: 'snapshot' | 'manual') {
+    api
+      .download(`/api/resultados/${resultado.id}/evidencia/${tipo}`)
+      .catch((error) =>
+        toast.error(error instanceof ApiError ? error.message : 'No se pudo descargar la evidencia.'),
+      );
+  }
+
   const esDescartado = resultado.estado === 'descartado';
+  const tieneSnapshot = Boolean(resultado.article?.evidence_path);
+  const tienePdfManual = Boolean(resultado.evidencia_manual_path);
 
   return (
     <Card className={esDescartado ? 'opacity-60' : undefined}>
@@ -120,6 +130,28 @@ export function ResultadoCard({
               <Button size="sm" variant="ghost" disabled={descartar.isPending} onClick={handleDescartar}>
                 Descartar
               </Button>
+            )}
+          </div>
+        )}
+
+        {(tieneSnapshot || tienePdfManual) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {tieneSnapshot && (
+              <Button size="sm" variant="outline" onClick={() => handleDescargar('snapshot')}>
+                <Download className="size-3.5" />
+                Descargar snapshot
+              </Button>
+            )}
+            {tienePdfManual && (
+              <Button size="sm" variant="outline" onClick={() => handleDescargar('manual')}>
+                <Download className="size-3.5" />
+                Descargar PDF de evidencia
+              </Button>
+            )}
+            {resultado.article?.hash_contenido && (
+              <span className="text-muted-foreground font-mono text-xs" title="SHA-256 del contenido capturado">
+                SHA-256 {resultado.article.hash_contenido.slice(0, 12)}…
+              </span>
             )}
           </div>
         )}

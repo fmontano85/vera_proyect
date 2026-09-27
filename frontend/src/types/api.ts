@@ -77,6 +77,7 @@ export interface ResumenInicio {
   coincidencias_esperan_resolucion: number;
   seguimientos_vencidos: number;
   seguimientos_proximos_7_dias: number;
+  sanciones_pendientes: number;
   resultados_gap: number;
 }
 
@@ -197,4 +198,44 @@ export interface Paginated<T> {
   last_page: number;
   per_page: number;
   total: number;
+}
+
+/** GET /api/subjects/{id}/historial (auditoria, seccion 7). */
+export interface EventoHistorial {
+  id: number;
+  entidad: 'subject' | 'alias' | 'coincidencia';
+  evento: string;
+  descripcion: string | null;
+  usuario: string | null;
+  cambios: { attributes?: Record<string, unknown>; old?: Record<string, unknown> } | null;
+  propiedades: Record<string, unknown> | null;
+  creado_en: string;
+}
+
+/** GET /api/usuarios (solo admin). */
+export interface UsuarioTenant {
+  id: number;
+  name: string;
+  email: string;
+  rol: Rol | null;
+  activo: boolean;
+}
+
+/** GET /api/sanciones: hallazgo de cruce contra una lista de sanciones (OFAC SDN). */
+export interface HallazgoSancion {
+  id: number;
+  subject: { id: number; nombre_canonico: string } | null;
+  entrada: {
+    nombre: string;
+    aliases: string[];
+    tipo: string | null;
+    programa: string | null;
+    pais: string | null;
+    lista: string | null;
+  };
+  score: number;
+  estado: EstadoMatch;
+  resuelto_por: string | null;
+  resuelto_en: string | null;
+  creado_en: string;
 }

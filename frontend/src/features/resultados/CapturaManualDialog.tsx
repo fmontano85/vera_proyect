@@ -60,7 +60,8 @@ export function CapturaManualDialog({
 }: CapturaManualDialogProps) {
   const capturar = useCapturaManual(queryKey);
   const necesitaElegirSubject = resultado.subject_id === null;
-  const { data: subjects } = useSubjects();
+  const [busquedaSubject, setBusquedaSubject] = useState('');
+  const { data: subjects } = useSubjects({ buscar: busquedaSubject });
 
   const [nombre, setNombre] = useState('');
   const [rol, setRol] = useState<RolMencion | ''>('');
@@ -72,6 +73,7 @@ export function CapturaManualDialog({
     (typeof ESTADO_RESOLUCION_OPCIONES)[number]['value'] | ''
   >('');
   const [subjectId, setSubjectId] = useState<string>('');
+  const [subjectNombre, setSubjectNombre] = useState('');
   const [pdf, setPdf] = useState<File | null>(null);
 
   function limpiar() {
@@ -83,6 +85,8 @@ export function CapturaManualDialog({
     setResumen('');
     setEstadoResolucion('');
     setSubjectId('');
+    setSubjectNombre('');
+    setBusquedaSubject('');
     setPdf(null);
   }
 
@@ -234,18 +238,37 @@ export function CapturaManualDialog({
           {necesitaElegirSubject && (
             <div className="grid gap-1.5">
               <Label>Persona vigilada a la que se atribuye el hallazgo</Label>
-              <Select value={subjectId} onValueChange={setSubjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Elegir de la lista de vigilancia" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects?.data.map((subject) => (
-                    <SelectItem key={subject.id} value={String(subject.id)}>
+              {/* Busqueda en el servidor: la lista de vigilancia puede tener mas
+                  de una pagina, un Select con la primera pagina dejaria personas fuera. */}
+              {subjectId !== '' && (
+                <p className="text-sm">
+                  Seleccionada: <span className="font-medium">{subjectNombre}</span>
+                </p>
+              )}
+              <Input
+                value={busquedaSubject}
+                onChange={(e) => setBusquedaSubject(e.target.value)}
+                placeholder="Buscar por nombre o alias…"
+              />
+              <ul className="max-h-40 divide-y overflow-y-auto rounded-md border">
+                {subjects?.data.length === 0 && (
+                  <li className="text-muted-foreground p-2 text-sm">Sin coincidencias.</li>
+                )}
+                {subjects?.data.map((subject) => (
+                  <li key={subject.id}>
+                    <button
+                      type="button"
+                      className="hover:bg-accent w-full px-2 py-1.5 text-left text-sm"
+                      onClick={() => {
+                        setSubjectId(String(subject.id));
+                        setSubjectNombre(subject.nombre_canonico);
+                      }}
+                    >
                       {subject.nombre_canonico}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

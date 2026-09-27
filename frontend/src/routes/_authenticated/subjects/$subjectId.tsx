@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { puedeProponer, puedeResolver, useCurrentUser } from '@/features/auth/useAuth';
 import { AliasesSubject } from '@/features/consulta/AliasesSubject';
 import { DatosSubjectDialog } from '@/features/consulta/DatosSubjectDialog';
+import { SancionesSubject } from '@/features/sanciones/SancionesSubject';
+import { HistorialSubject } from '@/features/consulta/HistorialSubject';
 import { EstadoSubjectDialog } from '@/features/consulta/EstadoSubjectDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -118,6 +120,8 @@ function SubjectDetailPage() {
 
       {subject && <SeguimientoCard subject={subject} />}
 
+      {subject && <SancionesSubject subjectId={id} />}
+
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Resultados de búsqueda</h2>
         <FiltroEstado value={filtro} onChange={setFiltro} mostrarDesdeSeguimiento />
@@ -155,6 +159,8 @@ function SubjectDetailPage() {
           <ResultadoCard key={resultado.id} resultado={resultado} queryKey={['subjects', id, 'resultados']} />
         ))}
       </div>
+
+      {subject && <HistorialSubject subjectId={id} />}
     </AppShell>
   );
 }

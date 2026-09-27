@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { AlertTriangle, CalendarClock, CalendarRange, Inbox, Scale } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CalendarRange, Inbox, Scale, ShieldAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,7 +29,7 @@ function InicioPage() {
 
       {isLoading && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 5 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-32" />
           ))}
         </div>
@@ -62,6 +62,18 @@ function InicioPage() {
                 className="text-primary text-sm hover:underline"
               >
                 Ver bandeja
+              </Link>
+            }
+          />
+          <Contador
+            titulo="Sanciones por revisar"
+            descripcion="Posibles coincidencias con la lista OFAC SDN que un oficial debe resolver."
+            valor={resumen.sanciones_pendientes}
+            color="text-destructive"
+            icono={<ShieldAlert />}
+            enlace={
+              <Link to="/sanciones" className="text-primary text-sm hover:underline">
+                Ver sanciones
               </Link>
             }
           />

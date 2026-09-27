@@ -33,6 +33,8 @@ class InitializeTenancyFromAuthenticatedUser
          */
         abort_if($user->hasRole('superadmin'), 403, 'Las rutas de tenant no son para superadmin.');
 
+        abort_if($user->activo === false, 403, 'Usuario desactivado.');
+
         abort_if($user->tenant_id === null, 403, 'Usuario sin tenant asignado.');
 
         $tenant = $user->tenant;

@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CoincidenciaController;
+use App\Http\Controllers\CuentaController;
 use App\Http\Controllers\ConfiguracionController;
 use App\Http\Controllers\InicioController;
 use App\Http\Controllers\MatchController;
+use App\Http\Controllers\SancionController;
 use App\Http\Controllers\SearchResultController;
 use App\Http\Controllers\SearchTagController;
 use App\Http\Controllers\SeguimientoController;
 use App\Http\Controllers\SubjectAliasController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TagSearchController;
+use App\Http\Controllers\UsuarioController;
 use Illuminate\Support\Facades\Route;
 
 // throttle:5,1 (OWASP A07 - fuerza bruta): 5 intentos por minuto por IP+email.
@@ -20,6 +23,12 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 
 Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'me']);
+
+// Cuenta propia: cualquier usuario autenticado (incluido superadmin), sin tenant.
+Route::middleware('auth:sanctum')->group(function () {
+    Route::patch('cuenta', [CuentaController::class, 'actualizar']);
+    Route::post('cuenta/contrasena', [CuentaController::class, 'cambiarContrasena'])->middleware('throttle:5,1');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -34,10 +43,21 @@ Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'me']);
 */
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show', 'update']);
+    Route::get('subjects/{subject}/historial', [SubjectController::class, 'historial']);
     Route::post('subjects/{subject}/buscar', [SubjectController::class, 'buscar']);
     Route::get('subjects/{subject}/matches', [SubjectController::class, 'matches']);
     Route::post('subjects/{subject}/aliases', [SubjectAliasController::class, 'store']);
     Route::delete('subjects/{subject}/aliases/{alias}', [SubjectAliasController::class, 'destroy'])->scopeBindings();
+
+    // Hallazgos contra listas de sanciones (OFAC SDN).
+    Route::get('sanciones', [SancionController::class, 'index']);
+    Route::post('sanciones/{sancion}/resolver', [SancionController::class, 'resolver']);
+    Route::post('subjects/{subject}/sanciones/cruzar', [SancionController::class, 'cruzar']);
+
+    // Usuarios del tenant (solo admin, UsuarioPolicy).
+    Route::get('usuarios', [UsuarioController::class, 'index']);
+    Route::post('usuarios', [UsuarioController::class, 'store']);
+    Route::patch('usuarios/{usuario}', [UsuarioController::class, 'update']);
 
     // Inicio y dashboard de coincidencias pendientes (Fase 2).
     Route::get('inicio/resumen', [InicioController::class, 'resumen']);
@@ -49,11 +69,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('subjects/{subject}/resultados', [SearchResultController::class, 'index']);
     Route::post('resultados/{resultado}/extraer', [SearchResultController::class, 'extraer']);
     Route::post('resultados/{resultado}/descartar', [SearchResultController::class, 'descartar']);
+    Route::get('resultados/{resultado}/evidencia/{tipo}', [SearchResultController::class, 'evidencia']);
     Route::post('resultados/{resultado}/captura-manual', [SearchResultController::class, 'capturaManual']);
 
     // Busqueda por tags (sesion posterior a la 3.7, sin subject).
     Route::get('tags-busqueda', [SearchTagController::class, 'index']);
     Route::post('tags-busqueda', [SearchTagController::class, 'store']);
+    Route::patch('tags-busqueda/{tag}', [SearchTagController::class, 'update']);
     Route::post('busquedas-tags', [TagSearchController::class, 'buscar']);
     Route::get('busquedas-tags/resultados', [TagSearchController::class, 'resultados']);
 

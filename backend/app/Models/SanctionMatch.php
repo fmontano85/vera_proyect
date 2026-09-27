@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
 
 /**
@@ -22,7 +24,16 @@ use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
 class SanctionMatch extends Model
 {
     /** @use HasFactory<SanctionMatchFactory> */
-    use BelongsToTenant, HasFactory, DerivesTenantFromSubject;
+    use BelongsToTenant, DerivesTenantFromSubject, HasFactory, LogsActivity;
+
+    /** Toda resolucion queda auditada (seccion 7 del CLAUDE.md raiz). */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['estado', 'resuelto_por'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges();
+    }
 
     protected function casts(): array
     {

@@ -26,7 +26,9 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if (! Auth::attempt($credentials)) {
+        // 'activo' en las credenciales: un usuario desactivado falla igual que
+        // uno con clave incorrecta (mismo mensaje generico).
+        if (! Auth::guard('web')->attempt([...$credentials, 'activo' => true])) {
             // Mensaje generico a proposito (OWASP A07): no revelar si el
             // email existe o no.
             throw ValidationException::withMessages([
@@ -41,6 +43,8 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
+        abort_if($request->user()->activo === false, 401);
+
         return $this->conUsuarioYRoles($request);
     }
 

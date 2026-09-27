@@ -15,6 +15,14 @@ declare(strict_types=1);
 
 return [
     'article_window_days' => (int) env('ARTICLE_WINDOW_DAYS', 60),
+    /**
+     * Puntaje minimo (0-100, ranking de Meilisearch) para registrar un
+     * hallazgo contra una lista de sanciones. PROVISIONAL: se calibra con
+     * datos reales en la Fase 0 (seccion 9 del CLAUDE.md raiz). Bajarlo
+     * genera mas falsos positivos para revisar; subirlo arriesga perder
+     * un hallazgo real.
+     */
+    'sanciones_score_minimo' => (float) env('SANCTIONS_MATCH_SCORE_MIN', 85),
     'extraction_confidence_threshold' => (float) env('EXTRACTION_CONFIDENCE_THRESHOLD', 0.6),
 
     /**

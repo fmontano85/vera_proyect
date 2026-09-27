@@ -8,6 +8,8 @@ use Database\Factories\SearchTagFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
 
 /**
@@ -20,7 +22,15 @@ use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
 class SearchTag extends Model
 {
     /** @use HasFactory<SearchTagFactory> */
-    use BelongsToTenant, HasFactory;
+    use BelongsToTenant, HasFactory, LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['nombre', 'activo'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges();
+    }
 
     protected function casts(): array
     {

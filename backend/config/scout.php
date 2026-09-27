@@ -144,6 +144,9 @@ return [
                 'filterableAttributes' => ['tenant_id'],
                 'searchableAttributes' => ['nombre_canonico', 'aliases'],
             ],
+            \App\Models\SanctionEntry::class => [
+                'searchableAttributes' => ['nombre', 'aliases'],
+            ],
         ],
         'model-settings' => [
             // User::class => [

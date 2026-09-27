@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Laravel\Scout\Searchable;
 
 /**
  * Catalogo global (sin BelongsToTenant), igual que SanctionList.
@@ -17,13 +18,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SanctionEntry extends Model
 {
     /** @use HasFactory<SanctionEntryFactory> */
-    use HasFactory;
+    use HasFactory, Searchable;
 
     protected function casts(): array
     {
         return [
             'aliases' => 'array',
             'raw_json' => 'array',
+        ];
+    }
+
+    /** Indice global 'sanction_entries' (sin tenant): las listas son las mismas para todos. */
+    public function toSearchableArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'nombre' => $this->nombre,
+            'aliases' => $this->aliases ?? [],
         ];
     }
 

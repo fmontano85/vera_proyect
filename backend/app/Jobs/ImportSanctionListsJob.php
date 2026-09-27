@@ -115,6 +115,11 @@ class ImportSanctionListsJob implements ShouldQueue
             'version' => (string) now()->timestamp,
             'fecha_importacion' => now(),
         ]);
+
+        // El upsert por lotes no dispara los eventos de Eloquent: hay que
+        // (re)indexar la lista a mano para que el cruce contra sanciones
+        // (MatchSanctionsJob) encuentre las entradas nuevas.
+        SanctionEntry::query()->where('sanction_list_id', $list->id)->searchable();
     }
 
     /**

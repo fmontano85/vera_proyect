@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\EstadoSearchResult;
 use App\Models\MentionMatch;
+use App\Models\SanctionMatch;
 use App\Models\SearchResult;
 use App\Models\Subject;
 use App\Services\Seguimiento\CalculadoraSeguimiento;
@@ -33,6 +34,7 @@ class InicioController extends Controller
             'coincidencias_esperan_resolucion' => MentionMatch::query()->enBandeja('esperan_resolucion')->count(),
             'seguimientos_vencidos' => Subject::query()->vencidosAl($hoy->toDateString())->count(),
             'seguimientos_proximos_7_dias' => Subject::query()->proximosAl($hoy, self::DIAS_PROXIMOS)->count(),
+            'sanciones_pendientes' => SanctionMatch::query()->where('estado', 'pendiente')->count(),
             'resultados_gap' => SearchResult::query()->where('estado', EstadoSearchResult::Gap)->count(),
         ]);
     }

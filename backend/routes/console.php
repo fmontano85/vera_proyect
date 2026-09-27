@@ -1,9 +1,12 @@
 <?php
 
 use App\Jobs\DetectarSeguimientosVencidosJob;
+use App\Jobs\ImportSanctionListsJob;
+use App\Jobs\MatchSanctionsJob;
 use App\Jobs\ReconciliarIndiceSubjectsJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
@@ -24,3 +27,17 @@ Schedule::job(new DetectarSeguimientosVencidosJob)
 Schedule::job(new ReconciliarIndiceSubjectsJob)
     ->dailyAt('03:00')
     ->timezone(config('vera.zona_horaria'));
+
+/*
+| Listas de sanciones (seccion 3.4): importacion semanal de OFAC SDN (descarga
+| publica y gratuita) y, solo si la importacion termino bien, cruce de todos los
+| subjects activos. Ningun servicio de pago (seccion 7).
+*/
+Schedule::call(fn () => Bus::chain([
+    new ImportSanctionListsJob('ofac_sdn'),
+    new MatchSanctionsJob,
+])->dispatch())
+    ->name('sanciones-importar-y-cruzar')
+    ->weeklyOn(0, '02:00')
+    ->timezone(config('vera.zona_horaria'))
+    ->onOneServer();

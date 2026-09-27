@@ -29,4 +29,13 @@ class SearchTagPolicy
     {
         return $user->hasAnyRole(['admin', 'oficial_cumplimiento', 'analista']);
     }
+
+    /**
+     * Renombrar/activar/desactivar cambia el catalogo de todo el tenant,
+     * no solo lo de quien lo hace: solo los roles que ya resuelven.
+     */
+    public function gestionar(User $user): bool
+    {
+        return $user->hasAnyRole(['admin', 'oficial_cumplimiento']);
+    }
 }

@@ -16,13 +16,40 @@ use Illuminate\Validation\Rule;
  */
 class SearchTagController extends Controller
 {
-    public function index(): JsonResponse
+    /** ?todos=1 incluye los inactivos y es solo para la pantalla de gestion. */
+    public function index(Request $request): JsonResponse
     {
-        $this->authorize('viewAny', SearchTag::class);
+        $todos = $request->boolean('todos');
+        $this->authorize($todos ? 'gestionar' : 'viewAny', SearchTag::class);
 
         return response()->json(
-            SearchTag::query()->where('activo', true)->orderBy('nombre')->get()
+            SearchTag::query()
+                ->when(! $todos, fn ($q) => $q->where('activo', true))
+                ->orderBy('nombre')
+                ->get()
         );
+    }
+
+    public function update(Request $request, SearchTag $tag): JsonResponse
+    {
+        $this->authorize('gestionar', SearchTag::class);
+
+        $validated = $request->validate([
+            'nombre' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('search_tags', 'nombre')->where('tenant_id', tenant('id'))->ignore($tag->id),
+            ],
+            'activo' => ['sometimes', 'required', 'boolean'],
+        ]);
+
+        abort_if($validated === [], 422, 'Indica el nombre o el estado del tag.');
+
+        $tag->update($validated);
+
+        return response()->json($tag);
     }
 
     public function store(Request $request): JsonResponse

@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Actions\Subjects\ActualizarSubject;
 use App\Actions\Subjects\CreateSubject;
 use App\Actions\Subjects\IniciarConsultaPuntual;
+use App\Actions\Subjects\ListarHistorialSubject;
 use App\Actions\Subjects\ListarSubjects;
 use App\Models\MentionMatch;
 use App\Models\Subject;
@@ -57,6 +58,13 @@ class SubjectController extends Controller
         $subject = $action->handle($validated);
 
         return response()->json($calculadora->serializar($subject->load('aliases')), 201);
+    }
+
+    public function historial(Subject $subject, ListarHistorialSubject $action): JsonResponse
+    {
+        $this->authorize('view', $subject);
+
+        return response()->json($action->handle($subject));
     }
 
     public function show(Subject $subject, CalculadoraSeguimiento $calculadora): JsonResponse

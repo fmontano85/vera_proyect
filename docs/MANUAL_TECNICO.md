@@ -3,7 +3,7 @@
 > Plataforma SaaS multi-tenant de *adverse media screening* y debida diligencia para sujetos obligados bajo la Ley Contra el Lavado de Dinero y de Activos (El Salvador), con expansión prevista a Guatemala, Honduras y Costa Rica.
 > Arquitectura multi-tenant de base de datos única (`tenant_id` + global scope), API REST en Laravel, frontend SPA en React, todo en Docker Compose (backend) + Node.js en el host (frontend).
 
-> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **378 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Panel de superadmin con menú lateral (`/superadmin`: tenants, listas de sanciones, términos y contratos, bitácora). Funciones de protección de datos completas (sección 8.2): bitácora de accesos, términos con aceptación por tenant, retención y depuración, exportación y borrado de una persona, baja de tenant. PDF de evidencia bajo demanda y reportes de auditoría exportables en PDF y CSV (sección 8.3). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
+> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **385 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Panel de superadmin con menú lateral (`/superadmin`: tenants, listas de sanciones, términos y contratos, bitácora). Funciones de protección de datos completas (sección 8.2): bitácora de accesos, términos con aceptación por tenant, retención y depuración, exportación y borrado de una persona, baja de tenant. PDF de evidencia bajo demanda y reportes de auditoría exportables en PDF y CSV (sección 8.3). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
 
 ---
 
@@ -198,7 +198,7 @@ Verificar que levantó todo:
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}"
 curl -i http://localhost:8000/api/user   # debe responder 401 (Sanctum activo, sin sesion)
-docker exec vera_api php artisan test    # deben pasar 378 tests
+docker exec vera_api php artisan test    # deben pasar 385 tests
 ```
 
 API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`, Redis en `:6379` (contenedor propio solo en dev, vía `docker-compose.override.yml`).
@@ -799,7 +799,7 @@ npm run lint        # oxlint
 
 ## 15. Feature Tests
 
-El proyecto usa Pest. **378 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
+El proyecto usa Pest. **385 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
 
 ```bash
 docker exec vera_api php artisan test              # suite completa

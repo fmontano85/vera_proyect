@@ -3,7 +3,7 @@
 > Plataforma SaaS multi-tenant de *adverse media screening* y debida diligencia para sujetos obligados bajo la Ley Contra el Lavado de Dinero y de Activos (El Salvador), con expansión prevista a Guatemala, Honduras y Costa Rica.
 > Arquitectura multi-tenant de base de datos única (`tenant_id` + global scope), API REST en Laravel, frontend SPA en React, todo en Docker Compose (backend) + Node.js en el host (frontend).
 
-> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **350 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Panel de superadmin con menú lateral (`/superadmin`: tenants, listas de sanciones, términos y contratos, bitácora). Funciones de protección de datos completas (sección 8.2): bitácora de accesos, términos con aceptación por tenant, retención y depuración, exportación y borrado de una persona, baja de tenant. Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
+> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **378 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Panel de superadmin con menú lateral (`/superadmin`: tenants, listas de sanciones, términos y contratos, bitácora). Funciones de protección de datos completas (sección 8.2): bitácora de accesos, términos con aceptación por tenant, retención y depuración, exportación y borrado de una persona, baja de tenant. PDF de evidencia bajo demanda y reportes de auditoría exportables en PDF y CSV (sección 8.3). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
 
 ---
 
@@ -84,7 +84,7 @@
 | Búsqueda en medios (legado) | Google Custom Search JSON API — código intacto, **inactivo**, cierra en enero 2027 (ver Apéndice D) | — |
 | Almacenamiento de evidencia automática | Cloudflare R2 (driver S3 de Laravel) | — |
 | Almacenamiento de evidencia manual | Disco configurable, independiente del anterior (`EVIDENCIA_MANUAL_DISK`, default `local`) | — |
-| PDF bajo demanda | Gotenberg **o** Cloudflare Browser Rendering | **sin decidir** — ver sección 5.6 |
+| PDF bajo demanda (evidencia y reportes) | `dompdf/dompdf`, librería PHP dentro del contenedor `api` (sin contenedor ni servicio externo) | 3.x — ver sección 5.8 |
 | Despliegue frontend | Cloudflare Pages | **pendiente** — nunca se ha desplegado, solo corre en `localhost:5173` |
 | Infraestructura | Docker Compose + Apache2/Nginx (reverse proxy) | — |
 | Cliente API tipado desde OpenAPI | `dedoc/scramble` — decidido, **no instalado todavía** | — |
@@ -198,7 +198,7 @@ Verificar que levantó todo:
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}"
 curl -i http://localhost:8000/api/user   # debe responder 401 (Sanctum activo, sin sesion)
-docker exec vera_api php artisan test    # deben pasar 350 tests
+docker exec vera_api php artisan test    # deben pasar 378 tests
 ```
 
 API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`, Redis en `:6379` (contenedor propio solo en dev, vía `docker-compose.override.yml`).
@@ -357,14 +357,13 @@ Ver Apéndice D para el detalle completo de la migración y de cómo retomarlo s
 
 A propósito **independiente** de `FILESYSTEM_DISK` (decisión explícita del propietario): la captura manual de un GAP puede quedar en `local` tanto en desarrollo como en producción sin depender de R2. Si se quiere subir a R2 también, apuntar `EVIDENCIA_MANUAL_DISK=r2` (reutiliza el mismo disco de la sección 5.6) — no es obligatorio.
 
-### 5.8 PDF bajo demanda: Gotenberg o Cloudflare Browser Rendering (decisión pendiente)
+### 5.8 PDF bajo demanda: dompdf (decidido 2026-09-28)
 
-Sigue sin decidirse. Los dos caminos, para cuando se resuelva:
+Los PDF (evidencia y reportes) se generan con **dompdf**, una librería PHP instalada con Composer dentro del contenedor `api`: no agrega contenedores ni servicios externos, y no hay nada que configurar en el entorno. Se descartaron Gotenberg (contenedor adicional, rompe el presupuesto de RAM) y Cloudflare Browser Rendering (servicio de pago que sería otro subencargado de datos personales).
 
-- **Gotenberg** (self-hosted, requiere un contenedor adicional): rompería el presupuesto de "no agregar contenedores" salvo que corra en un VPS/servicio aparte, o bajo demanda vía un job que lo levanta puntualmente. Ver [gotenberg.dev](https://gotenberg.dev/).
-- **Cloudflare Browser Rendering**: servicio administrado, sin contenedor propio — más alineado con el presupuesto de RAM del VPS. Mismo dashboard donde se gestiona R2 y Pages.
+La configuración vive en `App\Services\Evidence\GeneradorPdf` y es cerrada a propósito: sin recursos remotos, sin JavaScript y sin PHP embebido, porque parte del contenido viene de páginas de terceros. dompdf guarda su caché de fuentes en `storage/app/dompdf/` (se crea sola).
 
-**No implementar ninguno sin confirmar con el propietario del proyecto.**
+> **IMPORTANTE:** dompdf soporta CSS 2.1 con algunas extensiones: las plantillas de `resources/views/pdf/` usan tablas y estilos simples a propósito. Probar cualquier cambio de diseño generando el PDF real.
 
 ### 5.9 SMTP (alertas por correo — agenda de seguimiento, sección 3.8)
 
@@ -591,6 +590,24 @@ VERA es **encargado** del tratamiento; el cliente (tenant) es el **responsable**
 
 > **IMPORTANTE:** la exportación completa del tenant es el único caso en que el superadmin maneja datos personales de personas vigiladas; queda registrada como `tenant_exportado`.
 
+### 8.3 PDF de evidencia y reportes de auditoría (implementado 2026-09-28)
+
+**PDF de evidencia** (cualquier rol, botón "Descargar PDF" en cada resultado con snapshot; `GET /api/resultados/{id}/evidencia/pdf`): se arma con el **snapshot guardado**, nunca con la página viva. Portada con URL, fecha de publicación, fecha de captura (UTC), hash SHA-256 registrado y **verificación de integridad** (se vuelve a calcular el hash del archivo guardado y se compara). Luego el texto principal del artículo, sin menús, imágenes ni scripts. El snapshot completo sigue disponible como descarga aparte.
+
+**Reportes** (pantalla **Reportes**; todos los roles del tenant, incluido `lectura`):
+
+| Tipo | Parámetros | Contenido |
+|------|-----------|-----------|
+| Ficha de persona | Persona | Datos, aliases, seguimiento, coincidencias con su resolución, sanciones e historial |
+| Actividad de un periodo | Desde / hasta (máximo un año) | Coincidencias y sanciones resueltas, consultas, búsquedas por tags, extracciones y seguimientos |
+| Lista de vigilancia por nivel de riesgo | Nivel (o todos), incluir inactivas | Personas con seguimiento y conteo de coincidencias y sanciones por estado |
+
+- Formatos: **PDF** (para presentar) y **CSV** (para Excel; UTF-8 con BOM). En el CSV, una celda que empieza con `=`, `+`, `-` o `@` se prefija con `'` para que Excel no la ejecute como fórmula.
+- Se generan en segundo plano (`GenerarReporteJob`, cola `imports`); la pantalla se actualiza sola hasta que están listos.
+- Lo no resuelto aparece como **"Pendiente de resolución"** y cada PDF lo aclara: ningún reporte afirma que una persona está involucrada sin resolución humana.
+- Solicitud y descarga quedan en la bitácora (`reporte_solicitado`, `reporte_descargado`).
+- Los archivos viven en `tenants/{tenant_id}/reportes/` del disco `EVIDENCIA_MANUAL_DISK`. Al borrar una persona se borran los reportes que la incluyen; la baja del tenant borra todos.
+
 ---
 
 ## 9. Backup y recuperación
@@ -782,7 +799,7 @@ npm run lint        # oxlint
 
 ## 15. Feature Tests
 
-El proyecto usa Pest. **350 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
+El proyecto usa Pest. **378 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
 
 ```bash
 docker exec vera_api php artisan test              # suite completa

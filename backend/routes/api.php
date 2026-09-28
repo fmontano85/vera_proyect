@@ -38,6 +38,7 @@ Route::middleware(['auth:sanctum', 'activo'])->group(function () {
 */
 Route::middleware(['auth:sanctum', 'activo'])->prefix('superadmin')->group(function () {
     Route::get('tenants', [SuperadminController::class, 'tenants']);
+    Route::post('tenants', [SuperadminController::class, 'crearTenant']);
     Route::patch('tenants/{tenant}', [SuperadminController::class, 'actualizarTenant']);
     Route::get('configuracion-sanciones', [SuperadminController::class, 'verConfiguracionSanciones']);
     Route::put('configuracion-sanciones', [SuperadminController::class, 'actualizarConfiguracionSanciones']);

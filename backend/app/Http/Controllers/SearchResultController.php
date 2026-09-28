@@ -10,13 +10,15 @@ use App\Actions\SearchResults\ExtraerResultado;
 use App\Http\Requests\CapturaManualRequest;
 use App\Models\SearchResult;
 use App\Models\Subject;
+use App\Services\Evidence\DocumentoEvidencia;
+use App\Services\Evidence\GeneradorPdf;
 use App\Support\DescargaSegura;
 use App\Support\RegistroDeAccesos;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Flujo bajo demanda (seccion 3.7 del CLAUDE.md raiz). Delgado a
@@ -107,13 +109,19 @@ class SearchResultController extends Controller
      * vive en App\Support\DescargaSegura, compartida con cualquier futuro
      * endpoint que sirva contenido guardado.
      */
-    public function evidencia(SearchResult $resultado, string $tipo): StreamedResponse
+    public function evidencia(SearchResult $resultado, string $tipo, DocumentoEvidencia $documento, GeneradorPdf $pdf): SymfonyResponse
     {
         $this->authorize('view', $resultado);
 
         // rutaOFallar() aborta con 404 antes de llegar al registro: solo se
         // registra una descarga que de verdad se sirve.
         $respuesta = match ($tipo) {
+            // Seccion 3.6: PDF bajo demanda desde la evidencia guardada, nunca desde la URL viva.
+            'pdf' => response($pdf->desdeVista('pdf.evidencia', $documento->datos($resultado) ?? abort(404, 'Esa evidencia no está disponible.')), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => "attachment; filename=\"evidencia-{$resultado->id}.pdf\"",
+                'X-Content-Type-Options' => 'nosniff',
+            ]),
             'snapshot' => DescargaSegura::deTercero(
                 Storage::disk(),
                 $this->rutaOFallar($resultado->article?->evidence_path, Storage::disk()),

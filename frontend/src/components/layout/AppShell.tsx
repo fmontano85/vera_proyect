@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CalendarClock, House, Inbox, ListChecks, LogOut, Search, Settings, ShieldAlert, ShieldCheck, Tags, UserCog, Users } from 'lucide-react';
+import { CalendarClock, House, Inbox, ListChecks, LogOut, ScrollText, Search, Settings, ShieldAlert, ShieldCheck, Tags, UserCog, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
   DropdownMenu,
@@ -34,6 +34,7 @@ const NAV_RESOLVER = [{ to: '/tags', label: 'Catálogo de tags', icon: ListCheck
 const NAV_ADMIN = [
   { to: '/usuarios', label: 'Usuarios', icon: Users },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
+  { to: '/bitacora', label: 'Bitácora', icon: ScrollText },
 ] as const;
 
 export function AppShell({ title, children }: { title: string; children: ReactNode }) {

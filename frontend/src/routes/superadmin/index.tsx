@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { authQueryKey, fetchCurrentUser, useCurrentUser, useLogout } from '@/features/auth/useAuth';
+import { BitacoraGlobal } from '@/features/bitacora/BitacoraGlobal';
 import {
   useActualizarConfiguracionSancionesSuperadmin,
   useActualizarListaOfacSuperadmin,
@@ -89,6 +90,7 @@ function SuperadminPage() {
       <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 md:p-6">
         <ConfiguracionSancionesGlobal />
         <TenantsPanel />
+        <BitacoraGlobal />
       </main>
     </div>
   );

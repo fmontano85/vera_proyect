@@ -31,5 +31,8 @@ class AppServiceProvider extends ServiceProvider
         // Bitacora del tenant: solo su admin (seccion 3.9, punto 7). La
         // global del superadmin usa TenantPolicy::gestionar.
         Gate::define('ver-bitacora-tenant', fn (User $user) => $user->hasRole('admin'));
+
+        // Terminos y contrato: los acepta el admin en nombre del tenant (seccion 3.9, punto 1).
+        Gate::define('aceptar-documentos-legales', fn (User $user) => $user->hasRole('admin'));
     }
 }

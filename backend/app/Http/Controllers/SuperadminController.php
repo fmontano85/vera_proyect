@@ -9,6 +9,7 @@ use App\Jobs\ImportSanctionListsJob;
 use App\Jobs\MatchSanctionsJob;
 use App\Models\ConfiguracionSanciones;
 use App\Models\SanctionList;
+use App\Services\ProteccionDatos\EstadoDocumentosLegales;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -25,6 +26,8 @@ use Stancl\Tenancy\Database\Models\Tenant;
  */
 class SuperadminController extends Controller
 {
+    public function __construct(private readonly EstadoDocumentosLegales $documentos) {}
+
     public function tenants(): JsonResponse
     {
         Gate::authorize('gestionar', Tenant::class);
@@ -144,13 +147,15 @@ class SuperadminController extends Controller
         return response()->json(['mensaje' => 'Actualizacion de la lista OFAC encolada.']);
     }
 
-    /** @return array{id: string, name: ?string, sanciones_habilitado: bool} */
+    /** @return array{id: string, name: ?string, sanciones_habilitado: bool, documentos_al_dia: bool} */
     private function serializarTenant(Tenant $t): array
     {
         return [
             'id' => $t->id,
             'name' => $t->name,
             'sanciones_habilitado' => (bool) $t->sanciones_habilitado,
+            // Seccion 3.9, punto 1: aceptó los terminos y el contrato vigentes.
+            'documentos_al_dia' => $this->documentos->alDia($t->id),
         ];
     }
 

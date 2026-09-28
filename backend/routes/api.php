@@ -6,6 +6,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BitacoraController;
 use App\Http\Controllers\CoincidenciaController;
 use App\Http\Controllers\CuentaController;
+use App\Http\Controllers\DocumentoLegalController;
+use App\Http\Controllers\DocumentoLegalSuperadminController;
 use App\Http\Controllers\ConfiguracionController;
 use App\Http\Controllers\InicioController;
 use App\Http\Controllers\MatchController;
@@ -46,6 +48,13 @@ Route::middleware(['auth:sanctum', 'activo'])->prefix('superadmin')->group(funct
     Route::post('sanciones/actualizar-lista', [SuperadminController::class, 'actualizarListaSanciones']);
     Route::get('bitacora', [BitacoraController::class, 'global']);
     Route::get('bitacora/eventos', [BitacoraController::class, 'eventosGlobal']);
+
+    // Terminos y contrato de encargo (seccion 3.9, punto 1).
+    Route::get('documentos-legales', [DocumentoLegalSuperadminController::class, 'index']);
+    Route::post('documentos-legales', [DocumentoLegalSuperadminController::class, 'store']);
+    Route::put('documentos-legales/{documento}', [DocumentoLegalSuperadminController::class, 'update']);
+    Route::delete('documentos-legales/{documento}', [DocumentoLegalSuperadminController::class, 'destroy']);
+    Route::post('documentos-legales/{documento}/publicar', [DocumentoLegalSuperadminController::class, 'publicar']);
 });
 
 /*
@@ -60,17 +69,24 @@ Route::middleware(['auth:sanctum', 'activo'])->prefix('superadmin')->group(funct
 |
 */
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
-    Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show', 'update']);
+    // 'documentos' (seccion 3.9, punto 1): sin aceptar los terminos vigentes
+    // el tenant no carga personas ni busca; consultar sigue permitido.
+    Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show', 'update'])
+        ->middlewareFor('store', 'documentos');
     Route::get('subjects/{subject}/historial', [SubjectController::class, 'historial']);
-    Route::post('subjects/{subject}/buscar', [SubjectController::class, 'buscar']);
+    Route::post('subjects/{subject}/buscar', [SubjectController::class, 'buscar'])->middleware('documentos');
     Route::get('subjects/{subject}/matches', [SubjectController::class, 'matches']);
-    Route::post('subjects/{subject}/aliases', [SubjectAliasController::class, 'store']);
+    Route::post('subjects/{subject}/aliases', [SubjectAliasController::class, 'store'])->middleware('documentos');
     Route::delete('subjects/{subject}/aliases/{alias}', [SubjectAliasController::class, 'destroy'])->scopeBindings();
 
     // Hallazgos contra listas de sanciones (OFAC SDN).
     Route::get('sanciones', [SancionController::class, 'index']);
     Route::post('sanciones/{sancion}/resolver', [SancionController::class, 'resolver']);
-    Route::post('subjects/{subject}/sanciones/cruzar', [SancionController::class, 'cruzar']);
+    Route::post('subjects/{subject}/sanciones/cruzar', [SancionController::class, 'cruzar'])->middleware('documentos');
+
+    // Documentos legales vigentes: todos los leen, el admin los acepta.
+    Route::get('documentos-legales', [DocumentoLegalController::class, 'index']);
+    Route::post('documentos-legales/{documento}/aceptar', [DocumentoLegalController::class, 'aceptar']);
 
     // Usuarios del tenant (solo admin, UsuarioPolicy).
     Route::get('usuarios', [UsuarioController::class, 'index']);
@@ -89,16 +105,16 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Flujo bajo demanda (seccion 3.7 del CLAUDE.md raiz, 2026-09-24).
     Route::get('subjects/{subject}/resultados', [SearchResultController::class, 'index']);
-    Route::post('resultados/{resultado}/extraer', [SearchResultController::class, 'extraer']);
+    Route::post('resultados/{resultado}/extraer', [SearchResultController::class, 'extraer'])->middleware('documentos');
     Route::post('resultados/{resultado}/descartar', [SearchResultController::class, 'descartar']);
     Route::get('resultados/{resultado}/evidencia/{tipo}', [SearchResultController::class, 'evidencia']);
-    Route::post('resultados/{resultado}/captura-manual', [SearchResultController::class, 'capturaManual']);
+    Route::post('resultados/{resultado}/captura-manual', [SearchResultController::class, 'capturaManual'])->middleware('documentos');
 
     // Busqueda por tags (sesion posterior a la 3.7, sin subject).
     Route::get('tags-busqueda', [SearchTagController::class, 'index']);
     Route::post('tags-busqueda', [SearchTagController::class, 'store']);
     Route::patch('tags-busqueda/{tag}', [SearchTagController::class, 'update']);
-    Route::post('busquedas-tags', [TagSearchController::class, 'buscar']);
+    Route::post('busquedas-tags', [TagSearchController::class, 'buscar'])->middleware('documentos');
     Route::get('busquedas-tags/resultados', [TagSearchController::class, 'resultados']);
 
     // Agenda de seguimiento de la lista de vigilancia (seccion 3.8, Fase 2).

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Services\ProteccionDatos\EstadoDocumentosLegales;
 use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -71,6 +72,8 @@ class AuthController extends Controller
             ...$user->toArray(),
             'roles' => $user->getRoleNames(),
             'sanciones_habilitado' => (bool) ($user->tenant?->sanciones_habilitado ?? false),
+            // Seccion 3.9, punto 1: el frontend avisa (y el backend bloquea crear/buscar).
+            'terminos_pendientes' => $user->tenant_id !== null && ! app(EstadoDocumentosLegales::class)->alDia($user->tenant_id),
         ]);
     }
 

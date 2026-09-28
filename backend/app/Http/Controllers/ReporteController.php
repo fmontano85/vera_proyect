@@ -44,7 +44,7 @@ class ReporteController extends Controller
         ]);
 
         $parametros = match ($validated['tipo']) {
-            'ficha_persona' => ['subject_id' => $this->subjectDelTenant((int) $validated['subject_id'])],
+            'ficha_persona' => $this->persona((int) $validated['subject_id']),
             'actividad_periodo' => $this->periodo($validated['desde'], $validated['hasta']),
             'lista_por_riesgo' => ['nivel_riesgo' => $validated['nivel_riesgo'], 'incluir_inactivos' => (bool) ($validated['incluir_inactivos'] ?? false)],
         };
@@ -55,6 +55,11 @@ class ReporteController extends Controller
             'parametros' => $parametros,
             'generado_por' => $request->user()->id,
         ]);
+        // La ficha ya sabe a quien incluye: si la persona se borra mientras el
+        // reporte esta en cola o fallo, BorrarSubject tambien lo encuentra.
+        if ($reporte->tipo === 'ficha_persona') {
+            $reporte->forceFill(['personas' => [$parametros['subject_id']]])->save();
+        }
 
         RegistroDeAccesos::registrar('reporte_solicitado', 'Reporte solicitado', $reporte, ['tipo' => $reporte->tipo, 'formato' => $reporte->formato]);
         GenerarReporteJob::dispatch($reporte->id, (string) tenant()->getTenantKey());
@@ -77,12 +82,19 @@ class ReporteController extends Controller
         );
     }
 
-    /** La persona debe ser del tenant (scope): si no, 422 como cualquier dato invalido. */
-    private function subjectDelTenant(int $id): int
+    /**
+     * La persona debe ser del tenant (scope): si no, 422 como cualquier dato
+     * invalido. El nombre se guarda para mostrar la lista de reportes; se
+     * borra junto con el reporte si la persona se elimina.
+     *
+     * @return array{subject_id: int, nombre: string}
+     */
+    private function persona(int $id): array
     {
-        abort_unless(Subject::query()->whereKey($id)->exists(), 422, 'La persona indicada no existe en tu lista de vigilancia.');
+        $subject = Subject::query()->find($id);
+        abort_if($subject === null, 422, 'La persona indicada no existe en tu lista de vigilancia.');
 
-        return $id;
+        return ['subject_id' => $subject->id, 'nombre' => $subject->nombre_canonico];
     }
 
     /** @return array{desde: string, hasta: string} */

@@ -180,3 +180,16 @@ it('si la generacion falla el reporte queda como fallido', function () {
 
     expect($reporte->fresh()->estado)->toBe('fallido');
 });
+
+it('una ficha todavia en cola tambien se borra al borrar a la persona, y muestra su nombre', function () {
+    Bus::fake();
+    $tenant = Tenant::create();
+    $subject = personaConCoincidencias($tenant);
+    $admin = usuarioDeTenant($tenant, 'admin');
+    $id = $this->actingAs($admin)->postJson('/api/reportes', ['tipo' => 'ficha_persona', 'formato' => 'pdf', 'subject_id' => $subject->id])
+        ->assertStatus(202)->assertJsonPath('parametros.nombre', 'Ana Lopez')->json('id');
+
+    $this->actingAs($admin)->deleteJson("/api/subjects/{$subject->id}", ['confirmacion' => 'Ana Lopez'])->assertNoContent();
+
+    expect(Report::withoutGlobalScopes()->find($id))->toBeNull();
+});

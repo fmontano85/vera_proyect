@@ -8,7 +8,7 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-28 (bloque 21: **protección de datos completa — bloques A, B, C y D implementados** + panel de superadmin con menú lateral; comiteado en `develop`, sin push; 350 tests backend pasan)
+**Última actualización:** 2026-09-28 13:55 (bloque 21: **protección de datos completa — bloques A, B, C y D implementados** + panel de superadmin con menú lateral; comiteado en `develop`, sin push; 350 tests backend pasan)
 
 ### En qué estábamos
 **Sesión del 2026-09-28 (vigésimo primer bloque — sección 3.9 terminada):**
@@ -429,6 +429,19 @@ Detalle de cada bloque en "En qué estábamos" (bloques 12 a 15). Commits en `de
 - El archivo espurio `backend/vera` (SQLite) volvió a aparecer esta sesión — se sigue borrando cuando aparece. Hipótesis revisada: `phpunit.xml` fuerza `DB_DATABASE=:memory:` para los tests dentro de Docker, así que no viene de ahí; sospecha más fuerte ahora es algún proceso con PHP en el HOST (fuera de Docker) corriendo `artisan`/PHPUnit con el `.env` normal del proyecto (`DB_DATABASE=vera`) pero forzando el driver a `sqlite` — quizás una integración de IDE/editor. Sigue sin confirmarse, no bloquea nada.
 - Sin línea `Co-Authored-By` en los commits de este proyecto — el usuario lo pidió explícitamente.
 - Detalle técnico de Git (PATH de PowerShell) y decisiones de la sesión del 2026-09-12: ver sección 10 más abajo.
+
+### Qué se completó (bloques 20 y 21, 2026-09-28 — 13 commits `beb33c7..82cd56f` en `develop`, sin push; árbol limpio)
+- Decisiones de control de la 3.9 (tabla en la sección 3.9) y plan de 4 bloques confirmado.
+- Bloque A bitácora · B términos y aceptación · C retención/depuración/exportación/borrado de persona · D exportación y baja de tenant — backend + frontend, 350 tests, Playwright y MariaDB real.
+- Panel de superadmin con menú lateral (Tenants, Listas de sanciones, Términos y contratos, Bitácora).
+- Manual técnico: secciones 7.1, 8 (matriz), 8.1 bitácora, 8.2 protección de datos, 10 (depuración 04:00).
+
+### Archivos tocados en los bloques 20 y 21 (2026-09-28, comiteado)
+- **Backend nuevo:** `Actions/Bitacora/ListarBitacora`, `Actions/ProteccionDatos/{AceptarDocumentoLegal,BorrarSubject,DarDeBajaTenant,ExportarSubject,ExportarTenant,PublicarDocumentoLegal}`, `Http/Controllers/{BitacoraController,DocumentoLegalController,DocumentoLegalSuperadminController}`, `Http/Middleware/EnsureDocumentosAceptados`, `Jobs/DepurarDatosVencidosJob`, `Models/{Activity,AceptacionDocumento,DocumentoLegal}`, `Services/Bitacora/SerializadorBitacora`, `Services/ProteccionDatos/{EstadoDocumentosLegales,SerializadorDocumentoLegal}`, `Support/{ConfiguracionTenant,RegistroDeAccesos}`, migraciones `2026_09_28_120000/130000/140000`, tests `{Bitacora,DocumentosLegales,ProteccionDatosPersona,BajaTenant}Test`.
+- **Backend modificado:** `Http/Controllers/{Auth,Configuracion,Sancion,SearchResult,Subject,Superadmin,TagSearch}Controller`, `Models/Subject`, `Policies/SubjectPolicy`, `Providers/AppServiceProvider`, `bootstrap/app.php`, `config/activitylog.php`, `routes/{api,console}.php`, `tests/{Pest.php,Feature/AlertasSeguimientoTest,Feature/SuperadminTest}`.
+- **Frontend nuevo:** `components/layout/SuperadminShell`, `features/bitacora/*`, `features/configuracion/RetencionCard`, `features/consulta/ProteccionDatosSubject`, `features/documentos/useDocumentosLegales`, `features/superadmin/TenantsPanel`, `routes/_authenticated/{bitacora,documentos}/index`, `routes/superadmin/{route,sanciones,documentos,bitacora}`, `types/{bitacora,documentosLegales}`.
+- **Frontend modificado:** `AppShell`, `lib/api.ts` (`delete` con body), `routes/superadmin/index`, `routes/_authenticated/{configuracion/index,subjects/$subjectId}`, `features/superadmin/useSuperadmin`, `types/{api,superadmin}`.
+- **Docs:** `CLAUDE.md`, `docs/MANUAL_TECNICO.md`.
 
 ### Archivos tocados en el bloque 19 (2026-09-28, comiteado)
 - **Retención AML:** `CLAUDE.md` (secciones 3.9, 9 y pendiente).

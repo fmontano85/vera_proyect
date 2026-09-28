@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { ConfiguracionSanciones, ModoDescargaOfac, TenantSuperadmin } from '@/types/superadmin';
+import type {
+  ConfiguracionSanciones,
+  ModoDescargaOfac,
+  NuevoTenant,
+  TenantCreado,
+  TenantSuperadmin,
+} from '@/types/superadmin';
 
 export function useTenantsSuperadmin() {
   return useQuery({
@@ -9,12 +15,21 @@ export function useTenantsSuperadmin() {
   });
 }
 
+export function useCrearTenantSuperadmin() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (datos: NuevoTenant) => api.post<TenantCreado>('/api/superadmin/tenants', datos),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['superadmin', 'tenants'] }),
+  });
+}
+
 export function useActualizarTenantSuperadmin() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, sanciones_habilitado }: { id: string; sanciones_habilitado: boolean }) =>
-      api.patch<TenantSuperadmin>(`/api/superadmin/tenants/${id}`, { sanciones_habilitado }),
+    mutationFn: ({ id, ...cambios }: { id: string; name?: string; sanciones_habilitado?: boolean }) =>
+      api.patch<TenantSuperadmin>(`/api/superadmin/tenants/${id}`, cambios),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['superadmin', 'tenants'] }),
   });
 }

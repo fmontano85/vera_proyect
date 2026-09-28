@@ -5,6 +5,19 @@ export interface TenantSuperadmin {
   sanciones_habilitado: boolean;
 }
 
+/** POST /api/superadmin/tenants. */
+export interface NuevoTenant {
+  name: string;
+  admin_name: string;
+  admin_email: string;
+  admin_password: string;
+}
+
+export interface TenantCreado {
+  tenant: TenantSuperadmin;
+  admin: { name: string; email: string };
+}
+
 export type ModoDescargaOfac = 'manual' | 'automatico';
 
 /** GET/PUT /api/superadmin/configuracion-sanciones. */

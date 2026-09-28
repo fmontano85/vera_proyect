@@ -6,6 +6,8 @@ use App\Jobs\ActualizarListaOfacProgramadaJob;
 use App\Jobs\ImportSanctionListsJob;
 use App\Jobs\MatchSanctionsJob;
 use App\Models\ConfiguracionSanciones;
+use App\Models\SanctionEntry;
+use App\Models\SanctionList;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Support\Facades\Bus;
@@ -144,6 +146,22 @@ it('ve y cambia el modo de descarga global de OFAC, y queda auditado con quien',
     $config = ConfiguracionSanciones::actual();
     expect($config->actualizado_por)->toBe($super->id);
     expect(Activity::where('subject_type', ConfiguracionSanciones::class)->where('event', 'updated')->exists())->toBeTrue();
+});
+
+it('informa el estado de la lista OFAC importada (o null si nunca se importo)', function () {
+    $super = superadmin();
+
+    $this->actingAs($super)->getJson('/api/superadmin/configuracion-sanciones')
+        ->assertOk()->assertJsonPath('lista', null);
+
+    $lista = SanctionList::factory()->create(['codigo' => 'ofac_sdn', 'version' => '2026-09-27', 'fecha_importacion' => '2026-09-27 08:00:00']);
+    SanctionEntry::factory()->count(2)->for($lista, 'sanctionList')->create();
+
+    $this->actingAs($super)->getJson('/api/superadmin/configuracion-sanciones')
+        ->assertOk()
+        ->assertJsonPath('lista.version', '2026-09-27')
+        ->assertJsonPath('lista.entradas', 2)
+        ->assertJsonPath('lista.fecha_importacion', '2026-09-27T08:00:00+00:00');
 });
 
 it('rechaza un modo de descarga invalido', function () {

@@ -8,6 +8,7 @@ use App\Actions\Usuarios\CrearUsuario;
 use App\Jobs\ImportSanctionListsJob;
 use App\Jobs\MatchSanctionsJob;
 use App\Models\ConfiguracionSanciones;
+use App\Models\SanctionList;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -153,13 +154,26 @@ class SuperadminController extends Controller
         ];
     }
 
-    /** @return array{modo_descarga_ofac: string, actualizado_por: ?string, updated_at: ?string} */
+    /**
+     * Incluye el estado de la lista OFAC importada (null si nunca se
+     * importo): el superadmin necesita ver si la lista esta al dia, no
+     * solo el modo de descarga.
+     *
+     * @return array<string, mixed>
+     */
     private function serializarConfiguracion(ConfiguracionSanciones $c): array
     {
+        $lista = SanctionList::query()->where('codigo', 'ofac_sdn')->withCount('entries')->first();
+
         return [
             'modo_descarga_ofac' => $c->modo_descarga_ofac,
             'actualizado_por' => $c->actualizadoPor?->name,
             'updated_at' => $c->updated_at?->toIso8601String(),
+            'lista' => $lista === null ? null : [
+                'version' => $lista->version,
+                'fecha_importacion' => $lista->fecha_importacion?->toIso8601String(),
+                'entradas' => $lista->entries_count,
+            ],
         ];
     }
 }

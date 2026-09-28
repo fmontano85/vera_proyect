@@ -3,7 +3,7 @@
 > Plataforma SaaS multi-tenant de *adverse media screening* y debida diligencia para sujetos obligados bajo la Ley Contra el Lavado de Dinero y de Activos (El Salvador), con expansión prevista a Guatemala, Honduras y Costa Rica.
 > Arquitectura multi-tenant de base de datos única (`tenant_id` + global scope), API REST en Laravel, frontend SPA en React, todo en Docker Compose (backend) + Node.js en el host (frontend).
 
-> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **290 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Primera pantalla de un panel de superadmin (`/superadmin`). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
+> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **310 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Primera pantalla de un panel de superadmin (`/superadmin`). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
 
 ---
 
@@ -198,7 +198,7 @@ Verificar que levantó todo:
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}"
 curl -i http://localhost:8000/api/user   # debe responder 401 (Sanctum activo, sin sesion)
-docker exec vera_api php artisan test    # deben pasar 290 tests
+docker exec vera_api php artisan test    # deben pasar 310 tests
 ```
 
 API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`, Redis en `:6379` (contenedor propio solo en dev, vía `docker-compose.override.yml`).
@@ -495,9 +495,10 @@ Primera pantalla real de un panel de superadmin (planes/facturación siguen en F
 - **Alta de tenants:** el panel crea el tenant junto con su primer usuario (rol `admin`, contraseña inicial) en una sola operación — un tenant sin ningún usuario es inútil (nadie puede entrar a él, y `POST /api/usuarios` exige ya estar autenticado *dentro* de un tenant, no hay forma circular de resolverlo después). El superadmin entrega la contraseña inicial al cliente por un medio seguro.
 - **Renombrar un tenant** (`tenants.name`, nullable — ningún tenant tenía nombre hasta esta sección): editable inline en el panel.
 - **Sanciones (cruce contra OFAC SDN) por tenant** — `sanciones_habilitado` en `tenants`, **`false` por defecto en todo tenant nuevo**. Sin esto habilitado, el tenant no ve el ítem "Sanciones" en el menú, el contador de Inicio, ni las 3 rutas de `SancionController` (responden 404, no 403, para no confirmar que la función existe). `MatchSanctionsJob` salta los tenants sin la función habilitada.
+- **Bitácora de todos los tenants, sin datos personales** (sección 8.1): quién, qué evento, cuándo y el número interno del objeto ("Persona #12"), filtrable por tenant, evento y fechas. Nunca nombres, documentos, descripciones ni cambios de las personas vigiladas.
 - **Modo de descarga de la lista OFAC** (`configuracion_sanciones`, fila única global — la lista es un catálogo compartido por todos los tenants, no tiene sentido un modo distinto por cada uno): `automatico` (default, corre el domingo 02:00) o `manual`. En modo manual, el botón "Actualizar lista ahora" del panel es la única forma de refrescarla — dispara el mismo `Bus::chain([ImportSanctionListsJob, MatchSanctionsJob])` de la sección 10 sin esperar al domingo.
 
-**Endpoints:** `GET/POST /api/superadmin/tenants`, `PATCH /api/superadmin/tenants/{tenant}` (acepta `name` y/o `sanciones_habilitado`, al menos uno), `GET/PUT /api/superadmin/configuracion-sanciones`, `POST /api/superadmin/sanciones/actualizar-lista`. Autorización via `TenantPolicy::gestionar` (registrada a mano en `AppServiceProvider::boot()` — `Tenant` es un modelo de `stancl/tenancy`, el autodescubrimiento de policies de Laravel no lo encuentra solo). El alta reutiliza `App\Actions\Usuarios\CrearUsuario`, la misma Action que usa `UsuarioController::store`.
+**Endpoints:** `GET/POST /api/superadmin/tenants`, `PATCH /api/superadmin/tenants/{tenant}` (acepta `name` y/o `sanciones_habilitado`, al menos uno), `GET/PUT /api/superadmin/configuracion-sanciones`, `POST /api/superadmin/sanciones/actualizar-lista`, `GET /api/superadmin/bitacora` (+ `/eventos`). Autorización via `TenantPolicy::gestionar` (registrada a mano en `AppServiceProvider::boot()` — `Tenant` es un modelo de `stancl/tenancy`, el autodescubrimiento de policies de Laravel no lo encuentra solo). El alta reutiliza `App\Actions\Usuarios\CrearUsuario`, la misma Action que usa `UsuarioController::store`.
 
 Verificado con datos reales contra MariaDB: alta de un tenant con su admin, el admin nuevo pudo iniciar sesión de inmediato, renombrado del tenant — todo limpiado después de la prueba.
 
@@ -542,8 +543,31 @@ docker exec vera_api php artisan db:seed --class=Database\\Seeders\\RoleSeeder
 | Extraer/descartar un `search_result` | `admin`, `oficial_cumplimiento`, `analista` | `SearchResultPolicy` |
 | **Captura manual** de un GAP | **solo** `admin`, `oficial_cumplimiento` | Queda ya resuelta, sin pasar por proponer→resolver — mismo criterio que resolver un match |
 | Configurar días por nivel de riesgo del tenant | **solo** `admin` | `ConfiguracionController` |
+| Consultar la bitácora del tenant | **solo** `admin` | Gate `ver-bitacora-tenant` (sección 8.1) |
 
 `superadmin` recibe 403 en absolutamente todas las rutas de este grupo (`auth:sanctum` + `tenant`) — su alcance vive aparte, fuera de las rutas de tenant (sección 7.1).
+
+### 8.1 Bitácora y registro de accesos (sección 3.9 del `CLAUDE.md` raíz, implementado 2026-09-28)
+
+`activity_log` guarda el tenant de cada registro (`tenant_id`, lo asigna `App\Models\Activity` al crear: tenancy activa → tenant sobre el que actuó el superadmin → tenant del usuario que causó el evento). Además de los cambios de modelos, se registran estos **accesos** (`App\Support\RegistroDeAccesos`):
+
+| Evento | Cuándo |
+|--------|--------|
+| `inicio_sesion` / `cierre_sesion` | Login y logout |
+| `consulta_puntual` | Consulta puntual a Brave sobre una persona |
+| `busqueda_tags` | Búsqueda por tags (guarda los tags y los días) |
+| `extraccion_solicitada` | "Sacar información de noticia" (envía texto a Anthropic) |
+| `resultado_descartado` | Descarte de un resultado |
+| `evidencia_descargada` | Descarga de evidencia (solo si de verdad se sirvió el archivo) |
+| `sanciones_cruzadas` | Cruce manual contra listas de sanciones |
+
+**No** se registra abrir la ficha de una persona (decisión del usuario, por volumen).
+
+**Quién la consulta:**
+- **Admin del tenant** (`/bitacora`, `GET /api/bitacora` + `/eventos`): registro completo de su tenant, con filtros por usuario, evento y fechas (días de calendario de El Salvador).
+- **Superadmin** (panel `/superadmin`, `GET /api/superadmin/bitacora`): todos los tenants **sin datos personales** (sección 7.1).
+
+Registros anteriores a la migración `2026_09_28_120000_add_tenant_id_to_activity_log` se rellenaron a partir del objeto auditado, de `properties.tenant_id` o del usuario causante; los que no tenían forma de saberse (objetos ya borrados sin causante) quedan "Sin tenant" y solo los ve el superadmin.
 
 ---
 
@@ -735,7 +759,7 @@ npm run lint        # oxlint
 
 ## 15. Feature Tests
 
-El proyecto usa Pest. **290 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
+El proyecto usa Pest. **310 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
 
 ```bash
 docker exec vera_api php artisan test              # suite completa

@@ -8,9 +8,16 @@ Este archivo es la fuente de verdad para Claude Code. Léelo completo antes de c
 
 ## Estatus de sesión
 
-**Última actualización:** 2026-09-28 (bloque 19: plazo de retención AML verificado en el texto real de la ley — 15 años, no 5 — + interfaz de superadmin completada con alta/renombrado de tenants; **todo comiteado en `develop`, sin push**; 290 tests backend pasan)
+**Última actualización:** 2026-09-28 (bloque 20: protección de datos — decisiones de control de la sección 3.9 + **bloque A (bitácora) implementado**; comiteado en `develop`, sin push; 310 tests backend pasan)
 
 ### En qué estábamos
+**Sesión del 2026-09-28 (vigésimo bloque — protección de datos: decisiones + bloque A de 4):**
+- **Decisiones del usuario sobre quién controla cada función de la 3.9** (tabla en la sección 3.9): términos/contrato los edita el superadmin y los acepta el admin del tenant; **plazo de retención lo configura el admin de cada tenant** (piso 15 años); job de depuración lo habilita/deshabilita el superadmin (por tenant, criterio por defecto); exportación/borrado de una persona = admin del tenant; baja de tenant = superadmin; bitácora la consultan el admin (su tenant, completa) y el superadmin (**todos los tenants, sin datos personales — opción A**).
+- **Plan de 4 bloques presentado y confirmado** ("procede"): A bitácora → B términos y aceptación → C retención, depuración, exportación/borrado de persona → D baja de tenant. Criterios por defecto aceptados: retención cuenta desde `desactivado_en` (activas nunca se depuran); depuración por tenant; sin aceptar términos se bloquea crear/buscar (consultar sigue); al borrar una persona, sus registros de bitácora se conservan sin datos personales. **No se registra abrir la ficha** (recomendación adoptada; el usuario no la objetó).
+- **Bloque A implementado** (commits `beb33c7` backend, `b1b49a1` frontend): `activity_log.tenant_id` (migración con relleno portable; 24 registros viejos de datos QA borrados quedan sin tenant), `App\Models\Activity` (asigna tenant al crear; **sin** `BelongsToTenant` a propósito, toda consulta filtra explícito), `App\Support\RegistroDeAccesos` (consulta puntual, búsqueda por tags, extracción, descarte, descarga de evidencia, cruce de sanciones, login/logout), `GET /api/bitacora` (+`/eventos`, gate `ver-bitacora-tenant` = admin), `GET /api/superadmin/bitacora` (+`/eventos`, `SerializadorBitacora::sinDatosPersonales`: nunca descripción/cambios/propiedades). Frontend: `/bitacora` (admin) y tarjeta en `/superadmin`. 20 tests nuevos; verificado con Playwright (11/11) en los 3 perfiles, sin nombres de personas en la vista del superadmin.
+- **Gotchas:** (1) `superadmin()` helper movido a `tests/Pest.php`. (2) El login tiene `throttle:5,1` por IP: scripts de Playwright con varias sesiones seguidas chocan con él — esperar ~60 s entre corridas. (3) Chromium en caché es `chromium-1217`; el paquete `playwright` nuevo pide otra build — lanzar con `executablePath: %LOCALAPPDATA%/ms-playwright/chromium-1217/chrome-win64/chrome.exe` en vez de descargar. (4) Se creó `qa-superadmin@vera.test` / `Demo1234!` (no había ningún superadmin en la BD de dev).
+- **Próximo: bloque B** (términos y aceptación) — `documentos_legales` + `aceptaciones_documentos`, edición/publicación por superadmin, aceptación por admin, bloqueo de crear/buscar sin aceptación.
+
 **Sesión del 2026-09-28 (decimonoveno bloque — plazo de retención AML + termina la interfaz de superadmin):** el usuario pidió "lo que más convenga" para el plazo de retención y que se terminara la interfaz de superadmin.
 - **Plazo de retención AML verificado leyendo el texto real de la ley (no de terceros):** `Art. 26` de la Ley Contra el Lavado de Dinero y de Activos, **Decreto 426** (reforma vigente — el Decreto 498 original decía 5 años, pero quedó superado): **"Los sujetos obligados deben mantener por un período no menor de quince años los registros..."** Dos plazos, ambos de 15 años, con arranque distinto: transacciones/documentación desde que termina cada operación; datos de identificación del cliente desde que termina la relación comercial. Corregido en la sección 3.9 y en la sección 9 (antes decía "GAFI exige mínimo 5 años", un dato de terceros que resultó obsoleto). **No se implementó la función de retención/depuración en sí** (borrado real de datos de clientes) — eso sigue requiriendo su propio plan y confirmación antes de codificar, como ya decía la sección 3.9.
 - **Interfaz de superadmin completada:** hasta hoy solo podía activar/desactivar Sanciones y el modo de descarga de OFAC; crear o renombrar un tenant todavía requería tinker. Ahora `POST /api/superadmin/tenants` crea el tenant junto con su primer usuario admin en una sola operación (reutiliza `App\Actions\Usuarios\CrearUsuario`, la misma Action de `UsuarioController::store`) — un tenant sin ningún usuario es inútil, y no hay forma circular de crear el primer usuario después (`POST /api/usuarios` exige ya estar autenticado *dentro* de un tenant). `PATCH /api/superadmin/tenants/{tenant}` ahora también acepta `name` (antes solo `sanciones_habilitado`). Frontend: botón "Nuevo tenant" con diálogo (nombre + datos del primer admin) y renombrado inline por fila, mismo patrón visual que el catálogo de tags.
@@ -217,12 +224,14 @@ Detalle de cada bloque en "En qué estábamos" (bloques 12 a 15). Commits en `de
 - `8de97a9` + `89366ba` + `49842d4` — **UI de gestión de la lista de vigilancia + dashboard de coincidencias pendientes** (inicio `/`, `/coincidencias`), reconciliación diaria del índice de Meilisearch, mensajes de validación en español; revisado con `/code-review` y verificado con Playwright en los dos tenants (20/20).
 
 ### Próximo paso (al retomar)
-1. **Primera carga real de OFAC** en la BD de dev (hoy vacía de sanciones): habilitar Sanciones para el tenant desde `/superadmin` (usuario `superadmin@vera.test`), luego "Actualizar lista ahora" o esperar al domingo. Comando alternativo: `dispatch_sync(new App\Jobs\ImportSanctionListsJob("ofac_sdn"))` (sección 4 del manual). Luego calibrar `SANCTIONS_MATCH_SCORE_MIN` con datos reales.
-2. Decidir con el usuario: flujo de dos pasos también para sanciones (propuesta del analista), y cuándo hacer push / PRs de `develop`.
-3. Aplazado por el usuario: **navegación en móvil** (`Sheet` de shadcn; ojo a los dos bugs conocidos del CLI de shadcn).
-4. El panel de superadmin (`/superadmin`) ya crea/renombra tenants y gestiona Sanciones/modo de descarga; el resto de Fase 3 (planes, facturación) sigue sin empezar.
-5. **Sección 3.9 (protección de datos):** el plazo de retención (15 años) ya está verificado, pero **la función de retención/depuración en sí no existe todavía** — presentar plan y confirmar con el usuario antes de codificar (borra/anonimiza datos reales de clientes). Tampoco existen aceptación de términos por tenant, exportación/borrado de una persona, ni baja de tenant.
-6. **Playwright vía Node quedó instalado** en el scratchpad de una sesión anterior (`~/.cache/ms-playwright`) — no es persistente entre sesiones de Claude Code (el scratchpad es por sesión). Si hace falta volver a probar en navegador: `npm install playwright && npx playwright install chromium` en un directorio de trabajo, sin necesitar `pip`.
+0. **Protección de datos, bloque B** (términos y aceptación), luego C y D — plan ya confirmado (ver bloque 20 arriba y sección 3.9).
+> **No repetir al usuario (pedido 2026-09-28):** la primera carga de OFAC y la calibración de `SANCTIONS_MATCH_SCORE_MIN` ya están anotadas en "Pendiente" y **no bloquean nada** — se puede seguir construyendo funciones sin ellas. No listarlas como próximo paso ni recordarlas en cada sesión; retomarlas solo si el usuario las pide o si una tarea depende de verdad de datos reales de sanciones.
+
+1. Decidir con el usuario: flujo de dos pasos también para sanciones (propuesta del analista), y cuándo hacer push / PRs de `develop`.
+2. Aplazado por el usuario: **navegación en móvil** (`Sheet` de shadcn; ojo a los dos bugs conocidos del CLI de shadcn).
+3. El panel de superadmin (`/superadmin`) ya crea/renombra tenants y gestiona Sanciones/modo de descarga; el resto de Fase 3 (planes, facturación) sigue sin empezar.
+4. **Sección 3.9 (protección de datos):** el plazo de retención (15 años) ya está verificado, pero **la función de retención/depuración en sí no existe todavía** — presentar plan y confirmar con el usuario antes de codificar (borra/anonimiza datos reales de clientes). Tampoco existen aceptación de términos por tenant, exportación/borrado de una persona, ni baja de tenant.
+5. **Playwright vía Node quedó instalado** en el scratchpad de una sesión anterior (`~/.cache/ms-playwright`) — no es persistente entre sesiones de Claude Code (el scratchpad es por sesión). Si hace falta volver a probar en navegador: `npm install playwright && npx playwright install chromium` en un directorio de trabajo, sin necesitar `pip`.
 
 ### Contexto para retomar (sesión 2026-09-25)
 - Contenedores Docker quedaron **arriba**. El dev server de Vite corría como tarea de fondo de la sesión de Claude Code: al cerrar la sesión se detiene — levantarlo con `cd frontend && npm run dev` (http://localhost:5173).
@@ -364,7 +373,7 @@ Detalle de cada bloque en "En qué estábamos" (bloques 12 a 15). Commits en `de
 - [x] ~~Probar en navegador real todo el bloque 16~~ — **hecho 2026-09-28** (decimoséptimo bloque, con Playwright vía Node — sin `pip` en esta máquina). Comiteado.
 - [x] ~~Corregir los hallazgos del `/code-review high` del bloque 16~~ — **hecho 2026-09-28**: 4 CONFIRMED + 12 PLAUSIBLE, todos corregidos (ver "En qué estábamos", decimoséptimo bloque).
 - [x] ~~Decisión del usuario: Sanciones habilitada por defecto~~ — **no, deshabilitada por defecto; el superadmin la activa por tenant** (2026-09-28), primer panel de superadmin (`/superadmin`).
-- [ ] **Calibrar el umbral de sanciones** (`SANCTIONS_MATCH_SCORE_MIN=85`, provisional) y hacer la primera carga real de OFAC (hoy vacía — antes hay que habilitar Sanciones para el tenant desde `/superadmin`).
+- [ ] **(No bloqueante — no recordarlo en cada sesión)** Calibrar el umbral de sanciones (`SANCTIONS_MATCH_SCORE_MIN=85`, provisional) y hacer la primera carga real de OFAC en dev: habilitar Sanciones para el tenant desde `/superadmin` (`superadmin@vera.test`) → "Actualizar lista ahora", o `dispatch_sync(new App\Jobs\ImportSanctionListsJob("ofac_sdn"))` (sección 4 del manual).
 - [ ] **Invitación de usuarios por correo** y recuperación de contraseña: requieren SMTP real.
 - [x] ~~`CapturaManualDialog` solo listaba 15 personas~~ — corregido 2026-09-26: busca en el servidor.
 - [ ] **(APLAZADO por el usuario 2026-09-26)** **Navegación en móvil inexistente (preexistente, Fase 1):** `AppShell` oculta el sidebar por debajo de `md` y no hay botón de menú — en un teléfono no se puede cambiar de pantalla. Encontrado en el QA de la 3.8, fuera de su alcance. Agregar un menú (ej. `Sheet` de shadcn) — revisar el bug de selectores Base UI vs. Radix al instalarlo.
@@ -715,6 +724,17 @@ Reglas:
 - Términos de servicio: el cliente declara que es sujeto obligado, que tiene base legal para cada persona que carga y que es el responsable del tratamiento.
 - **Contrato de encargo de tratamiento** con cada cliente: finalidad, instrucciones, seguridad, confidencialidad, devolución/borrado al terminar, notificación de brechas, y **subencargados y transferencias internacionales declarados**: Brave Search (EE. UU., recibe nombres en la query), Anthropic (EE. UU., recibe texto de artículos), Cloudflare R2 (evidencia), proveedor SMTP.
 
+**Quién controla cada función (decisión del usuario 2026-09-28):**
+
+| Función | Quién la controla |
+|---|---|
+| Términos y contrato (texto y versiones) | **superadmin** los edita; el admin del tenant los acepta |
+| Plazo de retención por tenant | **admin de cada tenant** (cambio del usuario 2026-09-28, antes superadmin; piso legal 15 años validado en el servidor) |
+| Job de depuración | **superadmin** lo habilita o deshabilita |
+| Exportación y borrado de una persona | **admin de cada tenant** |
+| Baja de tenant | **superadmin** |
+| Consulta del registro de accesos (`activity_log`) | **admin de cada tenant** (solo su tenant, completo) **y superadmin** (todos los tenants, **sin datos personales** — opción A, decisión 2026-09-28: ve quién/qué/cuándo y "persona #id", nunca nombres, documentos ni `attribute_changes`) |
+
 **Funciones de sistema que implica (a implementar; plan y confirmación antes de codificar):**
 1. **Aceptación de términos y contrato por el tenant:** registro de quién aceptó, versión del documento y fecha (auditado). Sin aceptación, el tenant no puede cargar sujetos ni buscar.
 2. **Plazo de retención configurable por tenant** (lo decide el cliente como responsable; **piso legal verificado 2026-09-28: 15 años, no 5** — Art. 26 de la Ley Contra el Lavado de Dinero y de Activos, Decreto 426, texto de la reforma vigente; el Decreto 498 original decía 5 años pero quedó superado. Dos plazos, ambos de 15 años: transacciones/documentación desde que termina cada operación; datos de identificación del cliente desde que termina la relación comercial. Un tenant puede configurar más de 15 años, nunca menos — validar ese piso cuando se construya la función).
@@ -722,7 +742,7 @@ Reglas:
 4. **Exportación de los datos de una persona** (para que el cliente atienda un derecho de acceso): todo lo que VERA tiene sobre un subject del tenant en un archivo descargable.
 5. **Borrado de una persona por orden del cliente** (derecho de cancelación u oposición aceptado por el cliente), con la misma lógica que la depuración.
 6. **Baja de tenant:** exportación completa y borrado de todos sus datos al terminar el contrato.
-7. **Registro de accesos:** `activity_log` ya existe; revisar que cubra consultas y descargas de evidencia, no solo cambios.
+7. **Registro de accesos — IMPLEMENTADO 2026-09-28 (bloque A):** ver manual técnico sección 8.1. Antes de implementarlo: hoy audita cambios (subjects, aliases, matches, sanciones, tags, usuarios, frecuencias, seguimientos, superadmin) pero **no** lecturas ni acciones sin cambio de modelo: consulta puntual, búsqueda por tags, "sacar información", descartar (solo queda en la columna `descartado_por`), descarga de evidencia, cruce manual de sanciones, ver la ficha de una persona, login/logout.
 
 **Almacenamiento de datos de Brave (`search_results`):** se guardan URL, título, snippet y fecha porque el flujo 3.7 necesita listar resultados sin descargarlos, conservar su estado, deduplicar, filtrar "nuevo desde el último seguimiento" y auditar qué vio el analista. Pendiente de confirmar con Brave si el plan Search lo permite. **Alternativa registrada si Brave lo niega (opción 2, no decidida):** conservar título y snippet solo mientras el resultado está en `nuevo`; al descartarlo o extraerlo, borrarlos y conservar URL, estado y los datos extraídos del propio artículo.
 

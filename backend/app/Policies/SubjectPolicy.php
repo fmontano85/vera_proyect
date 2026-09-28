@@ -71,4 +71,19 @@ class SubjectPolicy
     {
         return $user->hasAnyRole(['admin', 'oficial_cumplimiento', 'analista']);
     }
+
+    /**
+     * Seccion 3.9, puntos 4 y 5 (decision del usuario 2026-09-28): exportar
+     * todo lo que VERA tiene de una persona y borrarla por orden del
+     * cliente - solo el admin del tenant. El borrado es irreversible.
+     */
+    public function exportar(User $user, Subject $subject): bool
+    {
+        return $user->hasRole('admin');
+    }
+
+    public function delete(User $user, Subject $subject): bool
+    {
+        return $user->hasRole('admin');
+    }
 }

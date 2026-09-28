@@ -10,6 +10,7 @@ use App\Jobs\MatchSanctionsJob;
 use App\Models\ConfiguracionSanciones;
 use App\Models\SanctionList;
 use App\Services\ProteccionDatos\EstadoDocumentosLegales;
+use App\Support\ConfiguracionTenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -84,13 +85,22 @@ class SuperadminController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'sanciones_habilitado' => ['sometimes', 'required', 'boolean'],
+            'depuracion_habilitada' => ['sometimes', 'required', 'boolean'],
         ]);
 
         abort_if($validated === [], 422, 'No hay nada que actualizar.');
 
         $nombreAnterior = $tenant->name;
         $sancionesAntes = (bool) $tenant->sanciones_habilitado;
+        $depuracionAntes = ConfiguracionTenant::depuracionHabilitada($tenant);
         $tenant->update($validated);
+
+        // Seccion 3.9, punto 3: la depuracion borra datos reales; queda constancia de quien la activo.
+        if (array_key_exists('depuracion_habilitada', $validated) && $depuracionAntes !== (bool) $validated['depuracion_habilitada']) {
+            activity()->performedOn($tenant)->causedBy($request->user())->event('depuracion_cambiada')
+                ->withProperties(['de' => $depuracionAntes, 'a' => (bool) $validated['depuracion_habilitada']])
+                ->log('Depuración por plazo de retención '.($validated['depuracion_habilitada'] ? 'habilitada' : 'deshabilitada'));
+        }
 
         // Tenant es un modelo de stancl/tenancy: no tiene LogsActivity (no
         // es nuestro para agregarle el trait) - se registra a mano, igual
@@ -147,7 +157,7 @@ class SuperadminController extends Controller
         return response()->json(['mensaje' => 'Actualizacion de la lista OFAC encolada.']);
     }
 
-    /** @return array{id: string, name: ?string, sanciones_habilitado: bool, documentos_al_dia: bool} */
+    /** @return array<string, mixed> */
     private function serializarTenant(Tenant $t): array
     {
         return [
@@ -156,6 +166,9 @@ class SuperadminController extends Controller
             'sanciones_habilitado' => (bool) $t->sanciones_habilitado,
             // Seccion 3.9, punto 1: aceptó los terminos y el contrato vigentes.
             'documentos_al_dia' => $this->documentos->alDia($t->id),
+            // Seccion 3.9, puntos 2 y 3.
+            'retencion_anios' => ConfiguracionTenant::retencionAnios($t),
+            'depuracion_habilitada' => ConfiguracionTenant::depuracionHabilitada($t),
         ];
     }
 

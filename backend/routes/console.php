@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\ActualizarListaOfacProgramadaJob;
+use App\Jobs\DepurarDatosVencidosJob;
 use App\Jobs\DetectarSeguimientosVencidosJob;
 use App\Jobs\ReconciliarIndiceSubjectsJob;
 use Illuminate\Foundation\Inspiring;
@@ -36,5 +37,15 @@ Schedule::job(new ReconciliarIndiceSubjectsJob)
 */
 Schedule::job(new ActualizarListaOfacProgramadaJob)
     ->weeklyOn(0, '02:00')
+    ->timezone(config('vera.zona_horaria'))
+    ->onOneServer();
+
+/*
+| Seccion 3.9, punto 3: depuracion de personas inactivas con el plazo de
+| retencion vencido, solo en tenants donde el superadmin la habilito. Solo
+| BD propia y Storage; ningun servicio de pago (seccion 7).
+*/
+Schedule::job(new DepurarDatosVencidosJob)
+    ->dailyAt('04:00')
     ->timezone(config('vera.zona_horaria'))
     ->onOneServer();

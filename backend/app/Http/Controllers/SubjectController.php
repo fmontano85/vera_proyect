@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\ProteccionDatos\BorrarSubject;
+use App\Actions\ProteccionDatos\ExportarSubject;
 use App\Actions\Subjects\ActualizarSubject;
 use App\Actions\Subjects\CreateSubject;
 use App\Actions\Subjects\IniciarConsultaPuntual;
@@ -15,7 +17,9 @@ use App\Services\Seguimiento\CalculadoraSeguimiento;
 use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SubjectController extends Controller
 {
@@ -66,6 +70,43 @@ class SubjectController extends Controller
         $this->authorize('view', $subject);
 
         return response()->json($action->handle($subject));
+    }
+
+    /** Seccion 3.9, punto 4: todo lo que VERA tiene de la persona, en un ZIP. */
+    public function exportar(Request $request, Subject $subject, ExportarSubject $action): StreamedResponse
+    {
+        $this->authorize('exportar', $subject);
+
+        $ruta = $action->handle($subject, $request->user());
+        RegistroDeAccesos::registrar('datos_exportados', 'Datos de la persona exportados', $subject);
+
+        return response()->streamDownload(function () use ($ruta) {
+            readfile($ruta);
+            @unlink($ruta);
+        }, "persona-{$subject->id}.zip", [
+            'Content-Type' => 'application/zip',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * Seccion 3.9, punto 5: borrado por orden del cliente. Irreversible:
+     * se confirma escribiendo el nombre de la persona.
+     */
+    public function destroy(Request $request, Subject $subject, BorrarSubject $action): Response
+    {
+        $this->authorize('delete', $subject);
+
+        $request->validate(['confirmacion' => ['required', 'string', 'max:255']]);
+        abort_unless(
+            mb_strtolower(trim($request->input('confirmacion'))) === mb_strtolower(trim($subject->nombre_canonico)),
+            422,
+            'El nombre escrito no coincide con el de la persona.',
+        );
+
+        $action->handle($subject, BorrarSubject::MOTIVO_ORDEN_DEL_CLIENTE, $request->user());
+
+        return response()->noContent();
     }
 
     public function show(Subject $subject, CalculadoraSeguimiento $calculadora): JsonResponse

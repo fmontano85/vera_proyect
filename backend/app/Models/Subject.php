@@ -57,9 +57,15 @@ class Subject extends Model
     {
         static::creating(function (Subject $subject) {
             $subject->proximo_seguimiento_en = app(CalculadoraSeguimiento::class)->calcularProximo($subject);
+            $subject->desactivado_en = $subject->activo ? null : now();
         });
 
         static::updating(function (Subject $subject) {
+            // Seccion 3.9, punto 2: el plazo de retencion corre desde aqui.
+            if ($subject->isDirty('activo')) {
+                $subject->desactivado_en = $subject->activo ? null : now();
+            }
+
             if ($subject->proximo_seguimiento_en === null
                 || $subject->isDirty(['nivel_riesgo', 'frecuencia_seguimiento_dias', 'ultimo_seguimiento_en'])) {
                 $subject->proximo_seguimiento_en = app(CalculadoraSeguimiento::class)->calcularProximo($subject);
@@ -92,6 +98,7 @@ class Subject extends Model
             'frecuencia_seguimiento_dias' => 'integer',
             'proximo_seguimiento_en' => FechaSinHora::class,
             'ultimo_seguimiento_en' => 'datetime',
+            'desactivado_en' => 'datetime',
         ];
     }
 

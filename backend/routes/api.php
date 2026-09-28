@@ -71,8 +71,10 @@ Route::middleware(['auth:sanctum', 'activo'])->prefix('superadmin')->group(funct
 Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // 'documentos' (seccion 3.9, punto 1): sin aceptar los terminos vigentes
     // el tenant no carga personas ni busca; consultar sigue permitido.
-    Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show', 'update'])
+    Route::apiResource('subjects', SubjectController::class)->only(['index', 'store', 'show', 'update', 'destroy'])
         ->middlewareFor('store', 'documentos');
+    // Seccion 3.9, puntos 4 y 5: exportar y borrar una persona (solo admin).
+    Route::get('subjects/{subject}/exportar', [SubjectController::class, 'exportar']);
     Route::get('subjects/{subject}/historial', [SubjectController::class, 'historial']);
     Route::post('subjects/{subject}/buscar', [SubjectController::class, 'buscar'])->middleware('documentos');
     Route::get('subjects/{subject}/matches', [SubjectController::class, 'matches']);
@@ -122,4 +124,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('subjects/{subject}/seguimiento-realizado', [SeguimientoController::class, 'realizado']);
     Route::get('configuracion/frecuencias-seguimiento', [ConfiguracionController::class, 'frecuencias']);
     Route::put('configuracion/frecuencias-seguimiento', [ConfiguracionController::class, 'actualizarFrecuencias']);
+    // Seccion 3.9, punto 2: plazo de retencion (lo cambia solo el admin).
+    Route::get('configuracion/retencion', [ConfiguracionController::class, 'retencion']);
+    Route::put('configuracion/retencion', [ConfiguracionController::class, 'actualizarRetencion']);
 });

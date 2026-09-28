@@ -34,5 +34,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Terminos y contrato: los acepta el admin en nombre del tenant (seccion 3.9, punto 1).
         Gate::define('aceptar-documentos-legales', fn (User $user) => $user->hasRole('admin'));
+
+        // Plazo de retencion del tenant (seccion 3.9, punto 2).
+        Gate::define('configurar-retencion', fn (User $user) => $user->hasRole('admin'));
     }
 }

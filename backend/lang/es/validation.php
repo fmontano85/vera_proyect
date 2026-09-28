@@ -20,6 +20,8 @@ return [
     'boolean' => 'El campo :attribute debe ser verdadero o falso.',
     'confirmed' => 'La confirmación de :attribute no coincide.',
     'date' => 'El campo :attribute no es una fecha válida.',
+    'date_format' => 'El campo :attribute debe tener el formato :format.',
+    'after_or_equal' => 'El campo :attribute debe ser una fecha igual o posterior a :date.',
     'different' => 'El campo :attribute debe ser distinto de :other.',
     'distinct' => 'El campo :attribute tiene un valor repetido.',
     'email' => 'El campo :attribute debe ser un correo electrónico válido.',
@@ -60,6 +62,10 @@ return [
     | Nombres legibles de los campos (los que ve el usuario en el mensaje).
     */
     'attributes' => [
+        'desde' => 'fecha inicial',
+        'hasta' => 'fecha final',
+        'formato' => 'formato',
+        'incluir_inactivos' => 'incluir inactivas',
         'activo' => 'estado',
         'aliases' => 'aliases',
         'aliases.*' => 'alias',

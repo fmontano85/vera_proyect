@@ -107,6 +107,16 @@ class Subject extends Model
         return $this->hasMany(SubjectAlias::class);
     }
 
+    public function coincidencias(): HasMany
+    {
+        return $this->hasMany(MentionMatch::class);
+    }
+
+    public function sanciones(): HasMany
+    {
+        return $this->hasMany(SanctionMatch::class);
+    }
+
     public function ultimoSeguimientoUsuario(): BelongsTo
     {
         return $this->belongsTo(User::class, 'ultimo_seguimiento_por');

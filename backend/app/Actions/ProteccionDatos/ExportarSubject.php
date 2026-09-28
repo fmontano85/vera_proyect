@@ -48,14 +48,32 @@ class ExportarSubject
      */
     public function agregarAlZip(ArchivoZip $zip, Subject $subject, User $por, string $prefijo): void
     {
+        $zip->agregarTexto("{$prefijo}persona.json", self::json($this->datos($subject, $por)));
+        self::agregarEvidencias($zip, $this->resultados($subject), $prefijo);
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Collection<int, SearchResult> */
+    private function resultados(Subject $subject): \Illuminate\Database\Eloquent\Collection
+    {
+        return SearchResult::query()->whereIn('id', ResultadosDePersona::ids($subject->id))
+            ->with('article')->orderBy('id')->get();
+    }
+
+    /**
+     * Todo lo que VERA tiene de la persona. Lo usan la exportacion
+     * (persona.json) y el reporte "ficha de persona" (App\Services\Reportes).
+     *
+     * @return array<string, mixed>
+     */
+    public function datos(Subject $subject, User $por): array
+    {
         $subject->load('aliases');
 
-        $resultados = SearchResult::query()->whereIn('id', ResultadosDePersona::ids($subject->id))
-            ->with('article')->orderBy('id')->get();
+        $resultados = $this->resultados($subject);
         $coincidencias = MentionMatch::query()->where('subject_id', $subject->id)->with('mention.article')->orderBy('id')->get();
         $sanciones = SanctionMatch::query()->where('subject_id', $subject->id)->with('sanctionEntry.sanctionList')->orderBy('id')->get();
 
-        $datos = [
+        return [
             'exportado_en' => now()->toIso8601String(),
             'exportado_por' => $por->name,
             'persona' => $subject->only([
@@ -96,9 +114,6 @@ class ExportarSubject
             ])->all(),
             'historial' => collect($this->historial->handle($subject, 10_000)->items())->all(),
         ];
-
-        $zip->agregarTexto("{$prefijo}persona.json", self::json($datos));
-        self::agregarEvidencias($zip, $resultados, $prefijo);
     }
 
     public static function json(mixed $datos): string

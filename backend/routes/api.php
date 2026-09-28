@@ -11,6 +11,7 @@ use App\Http\Controllers\DocumentoLegalSuperadminController;
 use App\Http\Controllers\ConfiguracionController;
 use App\Http\Controllers\InicioController;
 use App\Http\Controllers\MatchController;
+use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\SancionController;
 use App\Http\Controllers\SearchResultController;
 use App\Http\Controllers\SearchTagController;
@@ -97,6 +98,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('usuarios', [UsuarioController::class, 'index']);
     Route::post('usuarios', [UsuarioController::class, 'store']);
     Route::patch('usuarios/{usuario}', [UsuarioController::class, 'update']);
+
+    // Reportes de auditoria (seccion 1, punto 5): todos los roles del tenant.
+    Route::get('reportes', [ReporteController::class, 'index']);
+    Route::post('reportes', [ReporteController::class, 'store']);
+    Route::get('reportes/{reporte}/descargar', [ReporteController::class, 'descargar']);
 
     // Bitacora del tenant (solo admin, seccion 3.9 punto 7).
     Route::get('bitacora', [BitacoraController::class, 'delTenant']);

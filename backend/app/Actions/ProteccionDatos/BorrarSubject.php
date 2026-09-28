@@ -6,6 +6,7 @@ namespace App\Actions\ProteccionDatos;
 
 use App\Models\Activity;
 use App\Models\MentionMatch;
+use App\Models\Report;
 use App\Models\SanctionMatch;
 use App\Models\SearchResult;
 use App\Models\Subject;
@@ -77,6 +78,11 @@ class BorrarSubject
             DB::table('search_results')->whereIn('id', $resultadoIds)->delete();
             $busquedas = DB::table('search_runs')->where('subject_id', $id)->delete();
             $alertas = DB::table('alerts')->where('alertable_type', Subject::class)->where('alertable_id', $id)->delete();
+
+            // Reportes que incluyen a la persona (ficha, actividad, lista): se borran completos.
+            $reportes = Report::query()->whereJsonContains('personas', $id)->get(['id', 'archivo_path']);
+            $rutasEvidencia = [...$rutasEvidencia, ...$reportes->pluck('archivo_path')->filter()->all()];
+            Report::query()->whereKey($reportes->modelKeys())->delete();
             DB::table('subject_aliases')->whereIn('id', $aliasIds)->delete();
 
             // Por el modelo (no DB::table) para que Scout lo saque del indice;
@@ -91,6 +97,7 @@ class BorrarSubject
                 'resultados' => $resultadoIds->count(),
                 'busquedas' => $busquedas,
                 'alertas' => $alertas,
+                'reportes' => $reportes->count(),
                 'evidencias' => count($rutasEvidencia),
             ], $rutasEvidencia];
         });

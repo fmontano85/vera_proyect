@@ -77,7 +77,7 @@ class DarDeBajaTenant
             DB::table('search_results')->where('tenant_id', $id)->delete();
             DB::table('search_runs')->where('tenant_id', $id)->delete();
 
-            foreach (['alerts', 'search_tags', 'frecuencias_seguimiento', 'aceptaciones_documentos', 'subject_aliases'] as $tabla) {
+            foreach (['alerts', 'search_tags', 'frecuencias_seguimiento', 'aceptaciones_documentos', 'subject_aliases', 'reports'] as $tabla) {
                 DB::table($tabla)->where('tenant_id', $id)->delete();
             }
 

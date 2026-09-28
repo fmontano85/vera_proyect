@@ -8,6 +8,7 @@ use App\Models\Activity;
 use App\Models\ConfiguracionSanciones;
 use App\Models\FrecuenciaSeguimiento;
 use App\Models\MentionMatch;
+use App\Models\Report;
 use App\Models\SanctionMatch;
 use App\Models\SearchResult;
 use App\Models\SearchTag;
@@ -36,6 +37,7 @@ final class SerializadorBitacora
         FrecuenciaSeguimiento::class => 'frecuencia',
         Tenant::class => 'tenant',
         ConfiguracionSanciones::class => 'configuracion_sanciones',
+        Report::class => 'reporte',
     ];
 
     /** @return array<string, mixed> */

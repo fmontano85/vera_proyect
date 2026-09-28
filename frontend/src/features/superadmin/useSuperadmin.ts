@@ -28,7 +28,7 @@ export function useActualizarTenantSuperadmin() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...cambios }: { id: string; name?: string; sanciones_habilitado?: boolean }) =>
+    mutationFn: ({ id, ...cambios }: { id: string; name?: string; sanciones_habilitado?: boolean; depuracion_habilitada?: boolean }) =>
       api.patch<TenantSuperadmin>(`/api/superadmin/tenants/${id}`, cambios),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['superadmin', 'tenants'] }),
   });

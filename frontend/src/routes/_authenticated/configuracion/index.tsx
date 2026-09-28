@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { esAdmin, useCurrentUser } from '@/features/auth/useAuth';
+import { RetencionCard } from '@/features/configuracion/RetencionCard';
 import { useActualizarFrecuencias, useFrecuencias } from '@/features/seguimiento/useSeguimientos';
 import { ApiError } from '@/lib/api';
 import type { FrecuenciasSeguimiento, NivelFrecuencia } from '@/types/api';
@@ -51,6 +52,10 @@ function ConfiguracionPage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="mt-6">
+        <RetencionCard editable={esAdmin(user)} />
+      </div>
     </AppShell>
   );
 }

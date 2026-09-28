@@ -1,4 +1,4 @@
-import { Check, Pencil, Plus, X } from 'lucide-react';
+import { Check, Eraser, MoreHorizontal, Pencil, Plus, ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,22 +29,10 @@ import {
 import { mensajeApi } from '@/lib/api';
 import type { TenantSuperadmin } from '@/types/superadmin';
 
-/** Tenants de la plataforma: alta con su primer admin, renombrado y Sanciones por tenant. */
+/** Tenants de la plataforma: alta con su primer admin, renombrado, Sanciones y depuracion por tenant. */
 export function TenantsPanel() {
   const { data: tenants, isLoading } = useTenantsSuperadmin();
-  const actualizar = useActualizarTenantSuperadmin();
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
-
-  function alternarSanciones(t: TenantSuperadmin) {
-    actualizar.mutate(
-      { id: t.id, sanciones_habilitado: !t.sanciones_habilitado },
-      {
-        onSuccess: () =>
-          toast.success(t.sanciones_habilitado ? 'Sanciones deshabilitada.' : 'Sanciones habilitada.'),
-        onError: (e) => toast.error(mensajeApi(e, 'No se pudo cambiar el estado.')),
-      },
-    );
-  }
 
   return (
     <Card>
@@ -46,7 +40,7 @@ export function TenantsPanel() {
         <div>
           <CardTitle className="text-base">Tenants</CardTitle>
           <CardDescription>
-            Sanciones (cruce contra listas internacionales) está deshabilitada por defecto para cada tenant nuevo.
+            Cada tenant nuevo empieza con Sanciones y la depuración automática deshabilitadas.
           </CardDescription>
         </div>
         <Button size="sm" onClick={() => setDialogoAbierto(true)}>
@@ -58,7 +52,7 @@ export function TenantsPanel() {
         {isLoading && <Skeleton className="h-40 w-full" />}
         <ul className="divide-y">
           {tenants?.map((t) => (
-            <TenantFila key={t.id} tenant={t} onAlternarSanciones={() => alternarSanciones(t)} />
+            <TenantFila key={t.id} tenant={t} />
           ))}
         </ul>
       </CardContent>
@@ -68,10 +62,24 @@ export function TenantsPanel() {
   );
 }
 
-function TenantFila({ tenant, onAlternarSanciones }: { tenant: TenantSuperadmin; onAlternarSanciones: () => void }) {
+function TenantFila({ tenant }: { tenant: TenantSuperadmin }) {
   const actualizar = useActualizarTenantSuperadmin();
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(tenant.name ?? '');
+  const [confirmarDepuracion, setConfirmarDepuracion] = useState(false);
+
+  function cambiar(cambios: { sanciones_habilitado?: boolean; depuracion_habilitada?: boolean }, mensaje: string) {
+    actualizar.mutate(
+      { id: tenant.id, ...cambios },
+      {
+        onSuccess: () => {
+          setConfirmarDepuracion(false);
+          toast.success(mensaje);
+        },
+        onError: (e) => toast.error(mensajeApi(e, 'No se pudo cambiar el estado.')),
+      },
+    );
+  }
 
   function guardarNombre() {
     const valor = nombre.trim();
@@ -89,7 +97,7 @@ function TenantFila({ tenant, onAlternarSanciones }: { tenant: TenantSuperadmin;
   }
 
   return (
-    <li className="flex items-center justify-between gap-3 py-3">
+    <li className="flex flex-wrap items-center justify-between gap-3 py-3">
       <div className="min-w-0">
         {editando ? (
           <div className="flex items-center gap-2">
@@ -119,18 +127,75 @@ function TenantFila({ tenant, onAlternarSanciones }: { tenant: TenantSuperadmin;
           </div>
         )}
         <p className="text-muted-foreground truncate font-mono text-xs">{tenant.id}</p>
+        <p className="text-muted-foreground mt-0.5 text-xs">
+          Conservación de datos: {tenant.retencion_anios} años · Depuración{' '}
+          {tenant.depuracion_habilitada ? 'habilitada' : 'deshabilitada'}
+        </p>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Badge variant={tenant.documentos_al_dia ? 'outline' : 'destructive'}>
           {tenant.documentos_al_dia ? 'Términos aceptados' : 'Términos sin aceptar'}
         </Badge>
         <Badge variant={tenant.sanciones_habilitado ? 'default' : 'outline'}>
           Sanciones {tenant.sanciones_habilitado ? 'habilitada' : 'deshabilitada'}
         </Badge>
-        <Button size="sm" variant="outline" disabled={actualizar.isPending} onClick={onAlternarSanciones}>
-          {tenant.sanciones_habilitado ? 'Deshabilitar' : 'Habilitar'}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" className="size-8" aria-label="Opciones del tenant" disabled={actualizar.isPending}>
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onSelect={() =>
+                cambiar(
+                  { sanciones_habilitado: !tenant.sanciones_habilitado },
+                  tenant.sanciones_habilitado ? 'Sanciones deshabilitada.' : 'Sanciones habilitada.',
+                )
+              }
+            >
+              <ShieldAlert />
+              {tenant.sanciones_habilitado ? 'Deshabilitar Sanciones' : 'Habilitar Sanciones'}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                tenant.depuracion_habilitada
+                  ? cambiar({ depuracion_habilitada: false }, 'Depuración deshabilitada.')
+                  : setConfirmarDepuracion(true)
+              }
+            >
+              <Eraser />
+              {tenant.depuracion_habilitada ? 'Deshabilitar depuración' : 'Habilitar depuración'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+
+      <Dialog open={confirmarDepuracion} onOpenChange={setConfirmarDepuracion}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Habilitar la depuración automática?</DialogTitle>
+            <DialogDescription>
+              Cada día a las 04:00 se borrarán de forma permanente las personas inactivas de{' '}
+              <span className="text-foreground font-medium">{tenant.name ?? 'este tenant'}</span> desactivadas hace más
+              de {tenant.retencion_anios} años, con todos sus datos y evidencia. Las personas activas nunca se tocan.
+              Queda registrado en la bitácora.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={actualizar.isPending} onClick={() => setConfirmarDepuracion(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={actualizar.isPending}
+              onClick={() => cambiar({ depuracion_habilitada: true }, 'Depuración habilitada.')}
+            >
+              Habilitar depuración
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }

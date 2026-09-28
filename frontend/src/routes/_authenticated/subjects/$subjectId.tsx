@@ -6,12 +6,13 @@ import { AppShell } from '@/components/layout/AppShell';
 import { NivelRiesgoBadge } from '@/components/NivelRiesgoBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { puedeProponer, puedeResolver, useCurrentUser } from '@/features/auth/useAuth';
+import { esAdmin, puedeProponer, puedeResolver, useCurrentUser } from '@/features/auth/useAuth';
 import { AliasesSubject } from '@/features/consulta/AliasesSubject';
 import { DatosSubjectDialog } from '@/features/consulta/DatosSubjectDialog';
 import { SancionesSubject } from '@/features/sanciones/SancionesSubject';
 import { HistorialSubject } from '@/features/consulta/HistorialSubject';
 import { EstadoSubjectDialog } from '@/features/consulta/EstadoSubjectDialog';
+import { ProteccionDatosSubject } from '@/features/consulta/ProteccionDatosSubject';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FiltroEstado, type FiltroResultados } from '@/features/resultados/FiltroEstado';
@@ -110,6 +111,7 @@ function SubjectDetailPage() {
                   {subject.activo ? 'Desactivar' : 'Reactivar'}
                 </Button>
               )}
+              {esAdmin(user) && <ProteccionDatosSubject subject={subject} />}
             </div>
           </CardContent>
           {/* Montados solo al abrir: el formulario toma los valores actuales. */}

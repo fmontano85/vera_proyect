@@ -5,6 +5,10 @@ export interface TenantSuperadmin {
   sanciones_habilitado: boolean;
   /** Acepto los terminos y el contrato vigentes (seccion 3.9, punto 1). */
   documentos_al_dia: boolean;
+  /** Seccion 3.9, puntos 2 y 3: lo fija el admin del tenant (minimo 15). */
+  retencion_anios: number;
+  /** La habilita el superadmin; apagada por defecto. */
+  depuracion_habilitada: boolean;
 }
 
 /** POST /api/superadmin/tenants. */

@@ -12,6 +12,7 @@ use App\Actions\Subjects\ListarSubjects;
 use App\Models\MentionMatch;
 use App\Models\Subject;
 use App\Services\Seguimiento\CalculadoraSeguimiento;
+use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -117,6 +118,8 @@ class SubjectController extends Controller
         } catch (RuntimeException $e) {
             return response()->json(['mensaje' => $e->getMessage()], 422);
         }
+
+        RegistroDeAccesos::registrar('consulta_puntual', 'Consulta puntual ejecutada', $subject, ['fuentes' => $fuentes]);
 
         return response()->json([
             'mensaje' => 'Consulta puntual encolada.',

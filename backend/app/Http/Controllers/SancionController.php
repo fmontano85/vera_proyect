@@ -11,6 +11,7 @@ use App\Models\SanctionMatch;
 use App\Models\Subject;
 use App\Services\Sanctions\CruceSanciones;
 use App\Services\Sanctions\SerializadorSancion;
+use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -57,6 +58,8 @@ class SancionController extends Controller
             report($e);
             throw new IndiceBusquedaNoDisponible('No se pudo consultar el índice de sanciones: '.$e->getMessage(), previous: $e);
         }
+
+        RegistroDeAccesos::registrar('sanciones_cruzadas', 'Cruce manual contra listas de sanciones', $subject, ['hallazgos_nuevos' => $nuevos]);
 
         return response()->json(['hallazgos_nuevos' => $nuevos]);
     }

@@ -12,14 +12,6 @@ use Illuminate\Support\Facades\Bus;
 use Spatie\Activitylog\Models\Activity;
 use Stancl\Tenancy\Database\Models\Tenant;
 
-function superadmin(): User
-{
-    $user = User::factory()->create();
-    $user->assignRole('superadmin');
-
-    return $user;
-}
-
 beforeEach(fn () => $this->seed(RoleSeeder::class));
 
 it('solo superadmin ve y gestiona el panel; el resto de roles recibe 403', function (string $rol) {

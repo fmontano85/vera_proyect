@@ -30,6 +30,15 @@ function tenantConSanciones(): Tenant
     return $tenant;
 }
 
+/** Superadmin: sin tenant (seccion 3.1). Compartido entre SuperadminTest y BitacoraTest. */
+function superadmin(): User
+{
+    $user = User::factory()->create();
+    $user->assignRole('superadmin');
+
+    return $user;
+}
+
 function usuarioDeTenant(Tenant $tenant, string $rol, array $atributos = []): User
 {
     $user = User::factory()->create($atributos);

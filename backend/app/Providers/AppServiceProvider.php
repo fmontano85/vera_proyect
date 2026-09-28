@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use App\Policies\TenantPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -26,5 +27,9 @@ class AppServiceProvider extends ServiceProvider
         // policies de Laravel (App\Policies\{Model}Policy) no lo encuentra
         // solo, hay que registrarlo explicito.
         Gate::policy(Tenant::class, TenantPolicy::class);
+
+        // Bitacora del tenant: solo su admin (seccion 3.9, punto 7). La
+        // global del superadmin usa TenantPolicy::gestionar.
+        Gate::define('ver-bitacora-tenant', fn (User $user) => $user->hasRole('admin'));
     }
 }

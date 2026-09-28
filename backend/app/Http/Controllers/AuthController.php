@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -37,6 +38,8 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
+
+        RegistroDeAccesos::registrar('inicio_sesion', 'Inicio de sesión', $request->user());
 
         return $this->conUsuarioYRoles($request);
     }
@@ -73,6 +76,9 @@ class AuthController extends Controller
 
     public function logout(Request $request): Response
     {
+        // Antes del logout: despues ya no hay causante.
+        RegistroDeAccesos::registrar('cierre_sesion', 'Cierre de sesión', $request->user());
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BitacoraController;
 use App\Http\Controllers\CoincidenciaController;
 use App\Http\Controllers\CuentaController;
 use App\Http\Controllers\ConfiguracionController;
@@ -43,6 +44,8 @@ Route::middleware(['auth:sanctum', 'activo'])->prefix('superadmin')->group(funct
     Route::get('configuracion-sanciones', [SuperadminController::class, 'verConfiguracionSanciones']);
     Route::put('configuracion-sanciones', [SuperadminController::class, 'actualizarConfiguracionSanciones']);
     Route::post('sanciones/actualizar-lista', [SuperadminController::class, 'actualizarListaSanciones']);
+    Route::get('bitacora', [BitacoraController::class, 'global']);
+    Route::get('bitacora/eventos', [BitacoraController::class, 'eventosGlobal']);
 });
 
 /*
@@ -73,6 +76,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('usuarios', [UsuarioController::class, 'index']);
     Route::post('usuarios', [UsuarioController::class, 'store']);
     Route::patch('usuarios/{usuario}', [UsuarioController::class, 'update']);
+
+    // Bitacora del tenant (solo admin, seccion 3.9 punto 7).
+    Route::get('bitacora', [BitacoraController::class, 'delTenant']);
+    Route::get('bitacora/eventos', [BitacoraController::class, 'eventosDelTenant']);
 
     // Inicio y dashboard de coincidencias pendientes (Fase 2).
     Route::get('inicio/resumen', [InicioController::class, 'resumen']);

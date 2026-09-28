@@ -11,6 +11,7 @@ use App\Http\Requests\CapturaManualRequest;
 use App\Models\SearchResult;
 use App\Models\Subject;
 use App\Support\DescargaSegura;
+use App\Support\RegistroDeAccesos;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -58,6 +59,8 @@ class SearchResultController extends Controller
             return response()->json(['mensaje' => $e->getMessage()], 422);
         }
 
+        RegistroDeAccesos::registrar('extraccion_solicitada', 'Extracción de noticia solicitada', $resultado);
+
         return response()->json($resultado);
     }
 
@@ -70,6 +73,8 @@ class SearchResultController extends Controller
         } catch (RuntimeException $e) {
             return response()->json(['mensaje' => $e->getMessage()], 422);
         }
+
+        RegistroDeAccesos::registrar('resultado_descartado', 'Resultado descartado', $resultado);
 
         return response()->json($resultado);
     }
@@ -106,7 +111,9 @@ class SearchResultController extends Controller
     {
         $this->authorize('view', $resultado);
 
-        return match ($tipo) {
+        // rutaOFallar() aborta con 404 antes de llegar al registro: solo se
+        // registra una descarga que de verdad se sirve.
+        $respuesta = match ($tipo) {
             'snapshot' => DescargaSegura::deTercero(
                 Storage::disk(),
                 $this->rutaOFallar($resultado->article?->evidence_path, Storage::disk()),
@@ -120,6 +127,10 @@ class SearchResultController extends Controller
             ),
             default => abort(404, 'Tipo de evidencia desconocido.'),
         };
+
+        RegistroDeAccesos::registrar('evidencia_descargada', 'Evidencia descargada', $resultado, ['tipo' => $tipo]);
+
+        return $respuesta;
     }
 
     private function rutaOFallar(?string $path, Filesystem $disco): string

@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Actions\TagSearches\IniciarBusquedaPorTags;
 use App\Models\SearchResult;
 use App\Models\SearchTag;
+use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -33,6 +34,11 @@ class TagSearchController extends Controller
         } catch (RuntimeException $e) {
             return response()->json(['mensaje' => $e->getMessage()], 422);
         }
+
+        RegistroDeAccesos::registrar('busqueda_tags', 'Búsqueda por tags ejecutada', propiedades: [
+            'tags' => SearchTag::query()->whereIn('id', $validated['tag_ids'])->orderBy('nombre')->pluck('nombre')->all(),
+            'dias_atras' => $validated['dias_atras'] ?? null,
+        ]);
 
         return response()->json([
             'mensaje' => 'Busqueda por tags encolada.',

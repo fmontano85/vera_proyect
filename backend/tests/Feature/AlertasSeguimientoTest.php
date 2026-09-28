@@ -165,7 +165,8 @@ it('envia el resumen a oficial y admin del tenant (un correo por destinatario, s
 
     tenancy()->initialize($tenant);
     expect(Alert::whereNull('enviado_en')->count())->toBe(0)
-        ->and(Activity::where('event', 'alertas_enviadas')->count())->toBe(1);
+        ->and(Activity::where('event', 'alertas_enviadas')->count())->toBe(1)
+        ->and(Activity::where('event', 'alertas_enviadas')->value('tenant_id'))->toBe($tenant->id);
     tenancy()->end();
 });
 

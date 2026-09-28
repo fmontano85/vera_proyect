@@ -230,7 +230,7 @@ Detalle de cada bloque en "En qué estábamos" (bloques 12 a 15). Commits en `de
 1. Decidir con el usuario: flujo de dos pasos también para sanciones (propuesta del analista), y cuándo hacer push / PRs de `develop`.
 2. Aplazado por el usuario: **navegación en móvil** (`Sheet` de shadcn; ojo a los dos bugs conocidos del CLI de shadcn).
 3. El panel de superadmin (`/superadmin`) ya crea/renombra tenants y gestiona Sanciones/modo de descarga; el resto de Fase 3 (planes, facturación) sigue sin empezar.
-4. **Sección 3.9 (protección de datos):** el plazo de retención (15 años) ya está verificado, pero **la función de retención/depuración en sí no existe todavía** — presentar plan y confirmar con el usuario antes de codificar (borra/anonimiza datos reales de clientes). Tampoco existen aceptación de términos por tenant, exportación/borrado de una persona, ni baja de tenant.
+4. **Sección 3.9 (protección de datos):** plan de 4 bloques confirmado 2026-09-28; bloque A (bitácora) hecho. Faltan B (términos), C (retención/depuración/exportación/borrado de persona) y D (baja de tenant).
 5. **Playwright vía Node quedó instalado** en el scratchpad de una sesión anterior (`~/.cache/ms-playwright`) — no es persistente entre sesiones de Claude Code (el scratchpad es por sesión). Si hace falta volver a probar en navegador: `npm install playwright && npx playwright install chromium` en un directorio de trabajo, sin necesitar `pip`.
 
 ### Contexto para retomar (sesión 2026-09-25)

@@ -12,11 +12,18 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { esAdmin, puedeResolver, useCurrentUser, useLogout } from '@/features/auth/useAuth';
 
-const NAV_ITEMS = [
+const NAV_ANTES_DE_SANCIONES = [
   { to: '/', label: 'Inicio', icon: House },
   { to: '/coincidencias', label: 'Coincidencias', icon: Inbox },
   { to: '/subjects', label: 'Lista de vigilancia', icon: Search },
-  { to: '/sanciones', label: 'Sanciones', icon: ShieldAlert },
+] as const;
+
+/** Solo si el superadmin la activo para este tenant (panel de superadmin,
+ * deshabilitada por defecto) - ocultarla evita ofrecer una pantalla que
+ * el backend igual respondería con 404. */
+const NAV_SANCIONES = [{ to: '/sanciones', label: 'Sanciones', icon: ShieldAlert }] as const;
+
+const NAV_DESPUES_DE_SANCIONES = [
   { to: '/seguimientos', label: 'Seguimientos', icon: CalendarClock },
   { to: '/busqueda-tags', label: 'Búsqueda por tags', icon: Tags },
 ] as const;
@@ -51,7 +58,13 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
           <span className="font-semibold tracking-tight">VERA</span>
         </div>
         <nav className="flex flex-col gap-1 px-2 py-2">
-          {[...NAV_ITEMS, ...(puedeResolver(user) ? NAV_RESOLVER : []), ...(esAdmin(user) ? NAV_ADMIN : [])].map(({ to, label, icon: Icon }) => (
+          {[
+            ...NAV_ANTES_DE_SANCIONES,
+            ...(user?.sanciones_habilitado ? NAV_SANCIONES : []),
+            ...NAV_DESPUES_DE_SANCIONES,
+            ...(puedeResolver(user) ? NAV_RESOLVER : []),
+            ...(esAdmin(user) ? NAV_ADMIN : []),
+          ].map(({ to, label, icon: Icon }) => (
             <Link
               key={to}
               to={to}

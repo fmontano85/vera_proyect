@@ -65,18 +65,20 @@ function InicioPage() {
               </Link>
             }
           />
-          <Contador
-            titulo="Sanciones por revisar"
-            descripcion="Posibles coincidencias con la lista OFAC SDN que un oficial debe resolver."
-            valor={resumen.sanciones_pendientes}
-            color="text-destructive"
-            icono={<ShieldAlert />}
-            enlace={
-              <Link to="/sanciones" className="text-primary text-sm hover:underline">
-                Ver sanciones
-              </Link>
-            }
-          />
+          {user?.sanciones_habilitado && (
+            <Contador
+              titulo="Sanciones por revisar"
+              descripcion="Posibles coincidencias con la lista OFAC SDN que un oficial debe resolver."
+              valor={resumen.sanciones_pendientes}
+              color="text-destructive"
+              icono={<ShieldAlert />}
+              enlace={
+                <Link to="/sanciones" className="text-primary text-sm hover:underline">
+                  Ver sanciones
+                </Link>
+              }
+            />
+          )}
           <Contador
             titulo="Seguimientos vencidos"
             descripcion="Personas a las que ya les tocaba revisión."

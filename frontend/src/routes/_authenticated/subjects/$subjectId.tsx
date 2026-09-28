@@ -120,7 +120,7 @@ function SubjectDetailPage() {
 
       {subject && <SeguimientoCard subject={subject} />}
 
-      {subject && <SancionesSubject subjectId={id} />}
+      {subject && user?.sanciones_habilitado && <SancionesSubject subjectId={id} />}
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Resultados de búsqueda</h2>

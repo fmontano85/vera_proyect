@@ -27,7 +27,9 @@ function LoginPage() {
     login.mutate(
       { email, password },
       {
-        onSuccess: () => navigate({ to: '/' }),
+        // superadmin no tiene tenant: ninguna pantalla de _authenticated
+        // le sirve (todas asumen datos de tenant), va directo a su panel.
+        onSuccess: (user) => navigate({ to: user.roles.includes('superadmin') ? '/superadmin' : '/' }),
         onError: (err) => {
           const mensaje =
             err instanceof ApiError

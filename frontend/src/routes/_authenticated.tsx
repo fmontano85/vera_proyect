@@ -18,6 +18,12 @@ export const Route = createFileRoute('/_authenticated')({
       throw redirect({ to: '/login' });
     }
 
+    // superadmin no tiene tenant: toda pantalla de aqui abajo asume datos
+    // de tenant y el backend le responde 403 - su unica pantalla es /superadmin.
+    if (user.roles.includes('superadmin')) {
+      throw redirect({ to: '/superadmin' });
+    }
+
     return { user };
   },
   component: Outlet,

@@ -8,6 +8,10 @@ export interface User {
   email: string;
   tenant_id: string | null;
   roles: Rol[];
+  /** Panel de superadmin, seccion 3.2: deshabilitada por defecto, la
+   * activa el superadmin por tenant. false/sin sentido para superadmin
+   * (no tiene tenant). */
+  sanciones_habilitado: boolean;
 }
 
 export type NivelRiesgo = 'bajo' | 'medio' | 'alto';

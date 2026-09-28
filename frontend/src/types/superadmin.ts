@@ -25,4 +25,6 @@ export interface ConfiguracionSanciones {
   modo_descarga_ofac: ModoDescargaOfac;
   actualizado_por: string | null;
   updated_at: string | null;
+  /** null si la lista OFAC nunca se ha importado. */
+  lista: { version: string | null; fecha_importacion: string | null; entradas: number } | null;
 }

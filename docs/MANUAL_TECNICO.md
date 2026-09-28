@@ -3,7 +3,7 @@
 > Plataforma SaaS multi-tenant de *adverse media screening* y debida diligencia para sujetos obligados bajo la Ley Contra el Lavado de Dinero y de Activos (El Salvador), con expansión prevista a Guatemala, Honduras y Costa Rica.
 > Arquitectura multi-tenant de base de datos única (`tenant_id` + global scope), API REST en Laravel, frontend SPA en React, todo en Docker Compose (backend) + Node.js en el host (frontend).
 
-> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **310 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Primera pantalla de un panel de superadmin (`/superadmin`). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
+> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **350 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Panel de superadmin con menú lateral (`/superadmin`: tenants, listas de sanciones, términos y contratos, bitácora). Funciones de protección de datos completas (sección 8.2): bitácora de accesos, términos con aceptación por tenant, retención y depuración, exportación y borrado de una persona, baja de tenant. Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
 
 ---
 
@@ -198,7 +198,7 @@ Verificar que levantó todo:
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}"
 curl -i http://localhost:8000/api/user   # debe responder 401 (Sanctum activo, sin sesion)
-docker exec vera_api php artisan test    # deben pasar 310 tests
+docker exec vera_api php artisan test    # deben pasar 350 tests
 ```
 
 API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`, Redis en `:6379` (contenedor propio solo en dev, vía `docker-compose.override.yml`).
@@ -487,7 +487,9 @@ cd frontend   # el package.json vive ahi, no en la raiz del repo
 npm run dev
 ```
 
-### 7.1 Panel de superadmin (`/superadmin`, implementado 2026-09-28, completado 2026-09-28)
+### 7.1 Panel de superadmin (`/superadmin`, implementado 2026-09-28)
+
+Menú lateral propio (`routes/superadmin/route.tsx` + `SuperadminShell`): **Tenants** (`/superadmin`), **Listas de sanciones** (`/superadmin/sanciones`: estado de la última importación de OFAC, versión, número de entradas y modo de descarga), **Términos y contratos** (`/superadmin/documentos`, sección 8.2) y **Bitácora** (`/superadmin/bitacora`, sección 8.1). Las acciones de cada tenant están en su menú "Opciones": habilitar Sanciones, habilitar la depuración, exportar todos sus datos y darlo de baja.
 
 Primera pantalla real de un panel de superadmin (planes/facturación siguen en Fase 3). Fuera de las rutas de tenant (`auth:sanctum` + `activo`, sin el middleware `tenant`): el usuario `superadmin` no tiene `tenant_id` y ninguna pantalla de `/subjects`, `/coincidencias`, etc. le sirve — al iniciar sesión se le redirige directo a `/superadmin`, y si visita cualquier otra pantalla se le redirige de vuelta ahí.
 
@@ -544,6 +546,10 @@ docker exec vera_api php artisan db:seed --class=Database\\Seeders\\RoleSeeder
 | **Captura manual** de un GAP | **solo** `admin`, `oficial_cumplimiento` | Queda ya resuelta, sin pasar por proponer→resolver — mismo criterio que resolver un match |
 | Configurar días por nivel de riesgo del tenant | **solo** `admin` | `ConfiguracionController` |
 | Consultar la bitácora del tenant | **solo** `admin` | Gate `ver-bitacora-tenant` (sección 8.1) |
+| Aceptar términos y contrato | **solo** `admin` | Gate `aceptar-documentos-legales` (sección 8.2) |
+| Cambiar el plazo de conservación de datos | **solo** `admin` (mínimo 15 años) | Gate `configurar-retencion` |
+| **Exportar** o **borrar** una persona | **solo** `admin` | `SubjectPolicy::exportar` / `delete` |
+| Redactar/publicar términos, habilitar depuración, exportar o dar de baja un tenant | **solo** `superadmin` | `TenantPolicy::gestionar` |
 
 `superadmin` recibe 403 en absolutamente todas las rutas de este grupo (`auth:sanctum` + `tenant`) — su alcance vive aparte, fuera de las rutas de tenant (sección 7.1).
 
@@ -568,6 +574,22 @@ docker exec vera_api php artisan db:seed --class=Database\\Seeders\\RoleSeeder
 - **Superadmin** (panel `/superadmin`, `GET /api/superadmin/bitacora`): todos los tenants **sin datos personales** (sección 7.1).
 
 Registros anteriores a la migración `2026_09_28_120000_add_tenant_id_to_activity_log` se rellenaron a partir del objeto auditado, de `properties.tenant_id` o del usuario causante; los que no tenían forma de saberse (objetos ya borrados sin causante) quedan "Sin tenant" y solo los ve el superadmin.
+
+### 8.2 Protección de datos personales (sección 3.9 del `CLAUDE.md` raíz, implementado 2026-09-28)
+
+VERA es **encargado** del tratamiento; el cliente (tenant) es el **responsable**.
+
+**Términos y contrato de encargo.** El superadmin los redacta y publica por versión en `/superadmin/documentos` (`documentos_legales`: un borrador editable por tipo; una versión publicada no se modifica). El admin de cada tenant los lee y acepta en `/documentos` (queda quién, cuándo e IP en `aceptaciones_documentos`). Mientras haya una versión vigente sin aceptar, el middleware `documentos` responde 403 (`codigo: terminos_pendientes`) al dar de alta personas o aliases, buscar, extraer, capturar a mano y cruzar sanciones; consultar sigue permitido y todos los usuarios ven un aviso. Publicar una versión nueva obliga a aceptarla de nuevo.
+
+> **IMPORTANTE:** si no hay ningún documento publicado, no se bloquea nada. En producción publica los términos y el contrato (validados por un abogado) **antes** del primer cliente.
+
+**Conservación y depuración.** El plazo corre desde que la persona se desactiva (`subjects.desactivado_en`). El admin lo fija en `/configuracion` (mínimo 15 años: Art. 26, Ley Contra el Lavado de Dinero y de Activos; máximo 100). La depuración automática viene **deshabilitada**; la habilita el superadmin por tenant (con confirmación). Las personas activas nunca se depuran.
+
+**Exportar o borrar una persona** (admin, en la ficha): la exportación es un ZIP con `persona.json` y los PDF de evidencia manual. El borrado se confirma escribiendo el nombre y es irreversible: se eliminan la persona, sus aliases, coincidencias, hallazgos de sanciones, capturas manuales, resultados, búsquedas, alertas, evidencia y su entrada en Meilisearch. Los artículos y las menciones automáticas son contenido público global y se conservan. En la bitácora quedan los eventos sin datos personales y un registro `persona_eliminada`.
+
+**Baja de tenant** (superadmin): primero "Exportar todos sus datos" (ZIP con `tenant.json`, `personas/`, `busquedas-por-tags.json` y `bitacora.json`, para entregarlo al cliente); después "Dar de baja", que exige una exportación de los últimos 7 días y escribir el nombre del tenant. Borra todos sus datos, usuarios y evidencia; en la bitácora solo queda `tenant_dado_de_baja`. Si falla a mitad, repetir la baja continúa donde quedó.
+
+> **IMPORTANTE:** la exportación completa del tenant es el único caso en que el superadmin maneja datos personales de personas vigiladas; queda registrada como `tenant_exportado`.
 
 ---
 
@@ -603,6 +625,7 @@ Tareas programadas (`backend/routes/console.php`):
 | `DetectarSeguimientosVencidosJob` | Diario 07:00 `America/El_Salvador` (`schedule:list` la muestra en UTC) | Solo BD propia: crea una alerta por sujeto con `proximo_seguimiento_en <= hoy` (idempotente por tenant+alertable+vencimiento) y encola `SendAlertJob` (correo de resumen por tenant a `oficial_cumplimiento` + `admin`, solo si hay vencimientos nuevos) |
 | `ReconciliarIndiceSubjectsJob` | Diario 03:00 `America/El_Salvador` | Reindexa en Meilisearch (self-hosted, sin costo) todos los subjects según su estado real en la BD — red de seguridad para el gotcha de que un `SubjectAlias` nuevo no dispara el observer de Scout del `Subject` padre |
 | `ActualizarListaOfacProgramadaJob` → `ImportSanctionListsJob` → `MatchSanctionsJob` | Semanal, domingo 02:00 `America/El_Salvador` | Solo dispara la cadena si el modo de descarga global es `automatico` (sección 7.1 — en `manual` no hace nada, se niega en silencio). Descarga OFAC SDN (pública y gratuita; único adaptador con URL vigente confirmada, ONU/UE sin adaptador), la reindexa en Meilisearch (`sanction_entries`) y, solo si la importación terminó bien, cruza los subjects activos de los tenants **con Sanciones habilitada** (el resto se salta, `MatchSanctionsJob` lo revisa por tenant). Los hallazgos nacen `pendiente` y los resuelve una persona. Cero servicios de pago |
+| `DepurarDatosVencidosJob` | Diario 04:00 `America/El_Salvador` | Solo en tenants con la depuración habilitada por el superadmin (sección 8.2): borra las personas inactivas cuya desactivación supera el plazo de conservación del tenant. Solo BD propia, Storage y Meilisearch. Registra `depuracion_ejecutada` únicamente si borró algo |
 
 Al desplegar la agenda de seguimiento sobre una base con sujetos existentes, correr una vez (idempotente):
 ```bash
@@ -759,7 +782,7 @@ npm run lint        # oxlint
 
 ## 15. Feature Tests
 
-El proyecto usa Pest. **310 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
+El proyecto usa Pest. **350 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
 
 ```bash
 docker exec vera_api php artisan test              # suite completa

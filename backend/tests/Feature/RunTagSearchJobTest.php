@@ -36,7 +36,7 @@ it('construye la query con los tags + restriccion de dominios, sin subject, y gu
     expect($searchRun->subject_id)->toBeNull()
         ->and($searchRun->tenant_id)->toBe($tenant->id)
         ->and($searchRun->tags)->toBe(['estafa', 'hurto'])
-        ->and($searchRun->query)->toContain('"hurto"')->toContain('"estafa"')->toContain('site:laprensagrafica.com');
+        ->and($searchRun->query)->toContain('hurto')->toContain('estafa')->toContain('site:laprensagrafica.com');
 
     $resultado = SearchResult::where('url', 'https://medio.example/nota-hurto')->sole();
     expect($resultado->subject_id)->toBeNull()

@@ -4,18 +4,25 @@ declare(strict_types=1);
 
 use App\Services\Search\LimiteDeQuery;
 
-it('arma la query con terminos entre comillas y los site: agrupados', function () {
+/**
+ * Sin comillas de frase exacta a proposito (decision del usuario
+ * 2026-09-28, ver LimiteDeQuery::armar()): Brave las trata de forma
+ * inconsistente combinadas con site: (verificado con la API real: un
+ * caso con contenido existente daba 0 resultados con comillas y 20 sin
+ * ellas).
+ */
+it('arma la query con terminos sin comillas y los site: agrupados', function () {
     $resultado = LimiteDeQuery::construir(
         collect(['Juan Perez', 'J. Perez']),
         collect(['site:a.com', 'site:b.com']),
     );
 
-    expect($resultado['query'])->toBe('("Juan Perez" OR "J. Perez") (site:a.com OR site:b.com)')
+    expect($resultado['query'])->toBe('(Juan Perez OR J. Perez) (site:a.com OR site:b.com)')
         ->and($resultado['omitidos'])->toBe([]);
 });
 
 it('cuenta palabras separadas por espacios', function () {
-    expect(LimiteDeQuery::contarPalabras('("Juan Perez" OR "J") (site:a.com)'))->toBe(5);
+    expect(LimiteDeQuery::contarPalabras('(Juan Perez OR J) (site:a.com)'))->toBe(5);
 });
 
 it('omite terminos desde el final hasta respetar 75 palabras, sin quitar nunca el primero ni los site:', function () {
@@ -27,7 +34,7 @@ it('omite terminos desde el final hasta respetar 75 palabras, sin quitar nunca e
     $resultado = LimiteDeQuery::construir(collect(['Juan Carlos Perez'])->merge($aliases), $sites);
 
     expect(LimiteDeQuery::contarPalabras($resultado['query']))->toBeLessThanOrEqual(LimiteDeQuery::MAX_PALABRAS)
-        ->and($resultado['query'])->toContain('"Juan Carlos Perez"')
+        ->and($resultado['query'])->toContain('Juan Carlos Perez')
         ->and($resultado['query'])->toContain('site:medio7.com')
         ->and($resultado['omitidos'])->not->toBeEmpty()
         // Se quitan los del final: el ultimo alias siempre sale primero.
@@ -42,7 +49,7 @@ it('omite terminos desde el final hasta respetar 600 caracteres', function () {
     $resultado = LimiteDeQuery::construir(collect(['Canonico'])->merge($aliases), $sites);
 
     expect(mb_strlen($resultado['query']))->toBeLessThanOrEqual(LimiteDeQuery::MAX_CARACTERES)
-        ->and($resultado['query'])->toContain('"Canonico"')
+        ->and($resultado['query'])->toContain('Canonico')
         ->and($resultado['omitidos'])->not->toBeEmpty();
 });
 
@@ -54,5 +61,5 @@ it('lanza excepcion si ni siquiera el primer termino con los site: cabe en el li
 it('detecta si una query ya armada excede alguno de los dos limites', function () {
     expect(LimiteDeQuery::excede(str_repeat('a', 601)))->toBeTrue()
         ->and(LimiteDeQuery::excede(implode(' ', array_fill(0, 76, 'a'))))->toBeTrue()
-        ->and(LimiteDeQuery::excede('"Juan Perez" site:a.com'))->toBeFalse();
+        ->and(LimiteDeQuery::excede('Juan Perez site:a.com'))->toBeFalse();
 });

@@ -36,7 +36,7 @@ it('construye la query con nombre canonico + aliases, guarda el search_run y un 
 
     $searchRun = (new RunSubjectSearchJob($subject->id, $source->id))->handle();
 
-    expect($searchRun->query)->toContain('"Juan Perez"')->toContain('"Juanito Perez"');
+    expect($searchRun->query)->toContain('Juan Perez')->toContain('Juanito Perez');
 
     tenancy()->initialize($tenant);
     expect($searchRun->tenant_id)->toBe($tenant->id);
@@ -73,7 +73,7 @@ it('restringe la query a los medios salvadorenses por default cuando la source n
     $searchRun = (new RunSubjectSearchJob($subject->id, $source->id))->handle();
 
     expect($searchRun->query)
-        ->toContain('"Juan Perez"')
+        ->toContain('Juan Perez')
         ->toContain('site:laprensagrafica.com')
         ->toContain('site:elsalvador.com');
 });
@@ -267,7 +267,7 @@ it('guarda en metadata_query lo que Brave reporta de la query y los aliases omit
     $searchRun = (new RunSubjectSearchJob($subject->id, $source->id))->handle();
 
     expect(LimiteDeQuery::contarPalabras($searchRun->query))->toBeLessThanOrEqual(75)
-        ->and($searchRun->query)->toContain('"Juan Carlos Perez"')->toContain('site:lanoticiasv.com')
+        ->and($searchRun->query)->toContain('Juan Carlos Perez')->toContain('site:lanoticiasv.com')
         ->and($searchRun->metadata_query['terminos_omitidos'])->toContain('alias12 uno dos tres cuatro')
         ->and($searchRun->metadata_query['proveedor'])->toBe(['original' => 'x', 'altered' => null, 'search_operators' => ['applied' => true]]);
     Http::assertSentCount(1);

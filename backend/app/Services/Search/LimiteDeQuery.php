@@ -69,8 +69,18 @@ class LimiteDeQuery
      */
     private static function armar(Collection $terminos, Collection $sites): string
     {
-        $entreComillas = $terminos->map(fn (string $termino) => "\"{$termino}\"");
-
-        return '('.$entreComillas->implode(' OR ').') ('.$sites->implode(' OR ').')';
+        // Sin comillas de frase exacta a proposito (decision del usuario
+        // 2026-09-28, Fase 0 / seccion 9 del CLAUDE.md raiz): dos hallazgos
+        // independientes ya documentados apuntaban a que las comillas
+        // combinadas con site: son mas riesgo que beneficio en Brave.
+        // (1) Verificado con la API real: 'q="Cristian Umaña" site:...'
+        // devolvio 0 resultados con contenido real existente; la misma
+        // frase SIN comillas devolvio 20 - falso negativo silencioso.
+        // (2) search_operators.cleaned_query de Brave venia SIN las
+        // comillas que si se mandaron, seaal de que Brave ya las trata de
+        // forma inconsistente por su cuenta. Quitarlas no cambia el
+        // conteo de palabras (siguen siendo las mismas), solo evita el
+        // riesgo de coincidencia exacta fallida.
+        return '('.$terminos->implode(' OR ').') ('.$sites->implode(' OR ').')';
     }
 }

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CalendarClock, FileText, House, Inbox, ListChecks, LogOut, ScrollText, Search, Settings, ShieldAlert, ShieldCheck, Tags, TriangleAlert, UserCog, Users } from 'lucide-react';
+import { CalendarClock, FileBarChart, FileText, House, Inbox, ListChecks, LogOut, ScrollText, Search, Settings, ShieldAlert, ShieldCheck, Tags, TriangleAlert, UserCog, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
   DropdownMenu,
@@ -26,6 +26,7 @@ const NAV_SANCIONES = [{ to: '/sanciones', label: 'Sanciones', icon: ShieldAlert
 const NAV_DESPUES_DE_SANCIONES = [
   { to: '/seguimientos', label: 'Seguimientos', icon: CalendarClock },
   { to: '/busqueda-tags', label: 'Búsqueda por tags', icon: Tags },
+  { to: '/reportes', label: 'Reportes', icon: FileBarChart },
 ] as const;
 
 /** Gestion del tenant. Ocultar el enlace solo evita ofrecer una accion que

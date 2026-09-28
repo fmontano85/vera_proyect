@@ -20,6 +20,15 @@ const EVENTOS: Record<string, string> = {
   tenant_creado: 'Tenant creado',
   tenant_renombrado: 'Tenant renombrado',
   sanciones_cambiado: 'Sanciones habilitada/deshabilitada',
+  reporte_solicitado: 'Reporte solicitado',
+  reporte_descargado: 'Reporte descargado',
+  datos_exportados: 'Exportación de datos de una persona',
+  persona_eliminada: 'Persona eliminada',
+  retencion_cambiada: 'Cambio del plazo de conservación',
+  depuracion_cambiada: 'Depuración habilitada/deshabilitada',
+  depuracion_ejecutada: 'Depuración por plazo vencido',
+  tenant_exportado: 'Exportación completa del tenant',
+  tenant_dado_de_baja: 'Baja del tenant',
 };
 
 const OBJETOS: Record<string, string> = {
@@ -33,6 +42,7 @@ const OBJETOS: Record<string, string> = {
   frecuencia: 'Frecuencia de seguimiento',
   tenant: 'Tenant',
   configuracion_sanciones: 'Configuración de sanciones',
+  reporte: 'Reporte',
 };
 
 export function etiquetaEvento(evento: string | null): string {

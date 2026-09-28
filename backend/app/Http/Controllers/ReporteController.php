@@ -11,7 +11,9 @@ use App\Support\DescargaSegura;
 use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Throwable;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -49,20 +51,31 @@ class ReporteController extends Controller
             'lista_por_riesgo' => ['nivel_riesgo' => $validated['nivel_riesgo'], 'incluir_inactivos' => (bool) ($validated['incluir_inactivos'] ?? false)],
         };
 
-        $reporte = Report::create([
-            'tipo' => $validated['tipo'],
-            'formato' => $validated['formato'],
-            'parametros' => $parametros,
-            'generado_por' => $request->user()->id,
-        ]);
-        // La ficha ya sabe a quien incluye: si la persona se borra mientras el
-        // reporte esta en cola o fallo, BorrarSubject tambien lo encuentra.
-        if ($reporte->tipo === 'ficha_persona') {
-            $reporte->forceFill(['personas' => [$parametros['subject_id']]])->save();
-        }
+        $reporte = DB::transaction(function () use ($validated, $parametros, $request) {
+            $reporte = Report::create([
+                'tipo' => $validated['tipo'],
+                'formato' => $validated['formato'],
+                'parametros' => $parametros,
+                'generado_por' => $request->user()->id,
+            ]);
+            // La ficha ya sabe a quien incluye: si la persona se borra mientras el
+            // reporte esta en cola o fallo, BorrarSubject tambien lo encuentra.
+            if ($reporte->tipo === 'ficha_persona') {
+                $reporte->subjects()->attach($parametros['subject_id']);
+            }
+
+            return $reporte;
+        });
 
         RegistroDeAccesos::registrar('reporte_solicitado', 'Reporte solicitado', $reporte, ['tipo' => $reporte->tipo, 'formato' => $reporte->formato]);
-        GenerarReporteJob::dispatch($reporte->id, (string) tenant()->getTenantKey());
+
+        try {
+            GenerarReporteJob::dispatch($reporte->id, (string) tenant()->getTenantKey());
+        } catch (Throwable $e) {
+            // Sin esto el reporte quedaba 'pendiente' para siempre y la pantalla lo consultaba sin fin.
+            $reporte->forceFill(['estado' => 'fallido', 'error' => 'No se pudo encolar la generación. Intenta de nuevo.'])->save();
+            throw $e;
+        }
 
         return response()->json($this->serializar($reporte->load('generadoPor')), 202);
     }

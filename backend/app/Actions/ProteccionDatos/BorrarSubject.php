@@ -80,7 +80,9 @@ class BorrarSubject
             $alertas = DB::table('alerts')->where('alertable_type', Subject::class)->where('alertable_id', $id)->delete();
 
             // Reportes que incluyen a la persona (ficha, actividad, lista): se borran completos.
-            $reportes = Report::query()->whereJsonContains('personas', $id)->get(['id', 'archivo_path']);
+            $reportes = Report::query()
+                ->whereIn('id', DB::table('report_subject')->where('subject_id', $id)->select('report_id'))
+                ->get(['id', 'archivo_path']);
             $rutasEvidencia = [...$rutasEvidencia, ...$reportes->pluck('archivo_path')->filter()->all()];
             Report::query()->whereKey($reportes->modelKeys())->delete();
             DB::table('subject_aliases')->whereIn('id', $aliasIds)->delete();

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Models\Report;
+use App\Models\Subject;
 use App\Services\Evidence\GeneradorPdf;
 use App\Services\Reportes\ConstructorReportes;
 use App\Services\Reportes\EscritorCsv;
@@ -52,6 +53,23 @@ class GenerarReporteJob implements ShouldQueue
             $reporte->forceFill(['estado' => 'generando', 'error' => null])->save();
 
             $contenido = $constructor->construir($reporte);
+            $personas = array_values(array_unique($contenido['personas']));
+
+            /*
+             * Carrera con BorrarSubject (hallazgo del code-review 2026-09-28):
+             * 1) si alguien ya fue borrado desde que se leyo, se descarta;
+             * 2) se registran las personas ANTES de escribir el archivo, para
+             *    que un borrado posterior encuentre el reporte;
+             * 3) se vuelve a verificar despues de escribir: si se borro a
+             *    alguien en medio, se elimina el archivo.
+             */
+            if (! $this->siguenExistiendo($personas)) {
+                $this->descartar($reporte, null);
+
+                return;
+            }
+            $reporte->subjects()->sync($personas);
+
             $bytes = $reporte->formato === 'pdf'
                 ? $pdf->desdeVista($contenido['vista'], $contenido['datos'], $contenido['orientacion'])
                 : EscritorCsv::escribir($contenido['csv']['encabezados'], $contenido['csv']['filas']);
@@ -59,13 +77,32 @@ class GenerarReporteJob implements ShouldQueue
             $ruta = "tenants/{$this->tenantId}/reportes/reporte-{$reporte->id}.{$reporte->formato}";
             Report::disco()->put($ruta, $bytes);
 
-            $reporte->forceFill([
-                'estado' => 'listo',
-                'archivo_path' => $ruta,
-                'personas' => $contenido['personas'],
-                'generado_en' => now(),
-            ])->save();
+            $reporte->forceFill(['estado' => 'listo', 'archivo_path' => $ruta, 'generado_en' => now()])->save();
+
+            if (! $this->siguenExistiendo($personas)) {
+                $this->descartar($reporte, $ruta);
+            }
         });
+    }
+
+    /** @param  list<int>  $personas */
+    private function siguenExistiendo(array $personas): bool
+    {
+        return Subject::query()->whereIn('id', $personas)->count() === count($personas);
+    }
+
+    private function descartar(Report $reporte, ?string $ruta): void
+    {
+        if ($ruta !== null) {
+            Report::disco()->delete($ruta);
+        }
+
+        // Si BorrarSubject ya elimino la fila, esto no actualiza nada.
+        Report::query()->whereKey($reporte->id)->update([
+            'estado' => 'fallido',
+            'archivo_path' => null,
+            'error' => 'Una persona incluida se eliminó mientras se generaba el reporte. Vuelve a generarlo.',
+        ]);
     }
 
     public function failed(Throwable $e): void

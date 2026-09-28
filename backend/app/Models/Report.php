@@ -7,6 +7,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
 
 /**
@@ -18,7 +19,6 @@ use Stancl\Tenancy\Database\Concerns\BelongsToTenant;
  * @property string $formato
  * @property string $estado
  * @property array<string, mixed> $parametros
- * @property list<int>|null $personas
  */
 #[Fillable(['tipo', 'formato', 'parametros', 'generado_por'])]
 class Report extends Model
@@ -35,9 +35,14 @@ class Report extends Model
     {
         return [
             'parametros' => 'array',
-            'personas' => 'array',
             'generado_en' => 'datetime',
         ];
+    }
+
+    /** Personas incluidas (tabla report_subject): borrar una persona borra estos reportes. */
+    public function subjects(): BelongsToMany
+    {
+        return $this->belongsToMany(Subject::class, 'report_subject');
     }
 
     public function generadoPor(): BelongsTo

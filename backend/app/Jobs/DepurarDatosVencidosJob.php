@@ -33,8 +33,12 @@ class DepurarDatosVencidosJob implements ShouldQueue
     /** Personas por lote (publico para probar el recorrido con lotes chicos). */
     public int $lote = 200;
 
-    /** La primera corrida sobre un tenant grande borra miles: no el default de 60 s de Horizon. */
-    public int $timeout = 3600;
+    /**
+     * La primera corrida sobre un tenant grande borra miles: no el default
+     * de 60 s de Horizon. Menor que el retry_after de Redis (960 s): si no
+     * termina, lo que quedo se depura al dia siguiente (es idempotente).
+     */
+    public int $timeout = 900;
 
     public function __construct()
     {

@@ -26,6 +26,7 @@ class DocumentoEvidencia
 
         $html = (string) Storage::get($articulo->evidence_path);
         $hashActual = hash('sha256', $html);
+        $texto = TextoDeEvidencia::extraer($html);
 
         return [
             'resultado_id' => $resultado->id,
@@ -37,7 +38,8 @@ class DocumentoEvidencia
             'hash' => $articulo->hash_contenido,
             'hash_actual' => $hashActual,
             'integridad_verificada' => $articulo->hash_contenido !== null && hash_equals($articulo->hash_contenido, $hashActual),
-            'parrafos' => TextoDeEvidencia::parrafos($html),
+            'parrafos' => $texto['parrafos'],
+            'recortado' => $texto['recortado'],
             'generado_en' => now()->timezone(config('vera.zona_horaria'))->format('d/m/Y H:i'),
         ];
     }

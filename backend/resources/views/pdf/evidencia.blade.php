@@ -39,5 +39,8 @@
         @empty
             <p class="vacio">La página guardada no contiene texto legible.</p>
         @endforelse
+        @if ($recortado)
+            <p class="vacio">Texto recortado a los primeros {{ count($parrafos) }} párrafos. El contenido completo está en la descarga del snapshot original.</p>
+        @endif
     </div>
 @endsection

@@ -105,7 +105,9 @@ class ConstructorReportes
                     'puntaje' => $s['puntaje'],
                     'estado' => self::ESTADOS[self::texto($s['estado'])] ?? self::texto($s['estado']),
                 ])->all(),
-                'resultados' => count($datos['resultados']),
+                // Revisados = procesados o descartados; 'nuevo'/'procesando' nadie los ha visto aun.
+                'resultados' => collect($datos['resultados'])
+                    ->reject(fn (array $r) => in_array(self::texto($r['estado']), ['nuevo', 'procesando'], true))->count(),
                 'historial' => collect($datos['historial'])->map(fn (array $h) => [
                     'fecha' => self::fecha($h['creado_en']),
                     'evento' => self::describirHistorial($h),

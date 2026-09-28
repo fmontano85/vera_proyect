@@ -48,8 +48,10 @@ class ExportarSubject
      */
     public function agregarAlZip(ArchivoZip $zip, Subject $subject, User $por, string $prefijo): void
     {
-        $zip->agregarTexto("{$prefijo}persona.json", self::json($this->datos($subject, $por)));
-        self::agregarEvidencias($zip, $this->resultados($subject), $prefijo);
+        // Una sola lectura de los resultados para los datos y la evidencia.
+        $resultados = $this->resultados($subject);
+        $zip->agregarTexto("{$prefijo}persona.json", self::json($this->datos($subject, $por, $resultados)));
+        self::agregarEvidencias($zip, $resultados, $prefijo);
     }
 
     /** @return \Illuminate\Database\Eloquent\Collection<int, SearchResult> */
@@ -65,11 +67,11 @@ class ExportarSubject
      *
      * @return array<string, mixed>
      */
-    public function datos(Subject $subject, User $por): array
+    public function datos(Subject $subject, User $por, ?\Illuminate\Database\Eloquent\Collection $resultados = null): array
     {
         $subject->load('aliases');
 
-        $resultados = $this->resultados($subject);
+        $resultados ??= $this->resultados($subject);
         $coincidencias = MentionMatch::query()->where('subject_id', $subject->id)->with('mention.article')->orderBy('id')->get();
         $sanciones = SanctionMatch::query()->where('subject_id', $subject->id)->with('sanctionEntry.sanctionList')->orderBy('id')->get();
 

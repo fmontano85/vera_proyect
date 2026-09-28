@@ -77,7 +77,7 @@ it('genera la ficha de persona en PDF', function () {
     $reporte = generarReporte($tenant, ['tipo' => 'ficha_persona', 'formato' => 'pdf', 'subject_id' => $subject->id]);
 
     expect($reporte->estado)->toBe('listo')
-        ->and($reporte->personas)->toBe([$subject->id])
+        ->and(Illuminate\Support\Facades\DB::table('report_subject')->where('report_id', $reporte->id)->pluck('subject_id')->all())->toBe([$subject->id])
         ->and(substr((string) Storage::disk(config('vera.evidencia_manual_disk'))->get($reporte->archivo_path), 0, 4))->toBe('%PDF');
 });
 
@@ -192,4 +192,57 @@ it('una ficha todavia en cola tambien se borra al borrar a la persona, y muestra
     $this->actingAs($admin)->deleteJson("/api/subjects/{$subject->id}", ['confirmacion' => 'Ana Lopez'])->assertNoContent();
 
     expect(Report::withoutGlobalScopes()->find($id))->toBeNull();
+});
+
+// ── Correcciones del /code-review high (2026-09-28) ─────────────────────
+
+it('si una persona del reporte se borra mientras se genera, no queda archivo con sus datos', function () {
+    $tenant = Tenant::create();
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create(['nombre_canonico' => 'Ana Lopez']);
+    tenancy()->end();
+    Bus::fake();
+    $id = $this->actingAs(usuarioDeTenant($tenant, 'oficial_cumplimiento'))
+        ->postJson('/api/reportes', ['tipo' => 'lista_por_riesgo', 'formato' => 'csv', 'nivel_riesgo' => 'todos'])->json('id');
+
+    // El constructor ya leyo a la persona; otra peticion la borra antes de que el job termine.
+    $constructor = Mockery::mock(App\Services\Reportes\ConstructorReportes::class);
+    $constructor->shouldReceive('construir')->andReturnUsing(function () use ($subject) {
+        Illuminate\Support\Facades\DB::table('subjects')->where('id', $subject->id)->delete();
+
+        return ['titulo' => 't', 'vista' => 'x', 'orientacion' => 'portrait', 'datos' => [],
+            'csv' => ['encabezados' => ['Persona'], 'filas' => [['Ana Lopez']]], 'personas' => [$subject->id]];
+    });
+    (new GenerarReporteJob($id, $tenant->id))->handle($constructor, app(App\Services\Evidence\GeneradorPdf::class));
+
+    $reporte = Report::withoutGlobalScopes()->find($id);
+    expect($reporte->estado)->toBe('fallido')
+        ->and($reporte->archivo_path)->toBeNull()
+        ->and(Storage::disk(config('vera.evidencia_manual_disk'))->allFiles("tenants/{$tenant->id}/reportes"))->toBe([]);
+});
+
+it('si no se puede encolar la generacion, el reporte queda fallido y no pendiente para siempre', function () {
+    $tenant = Tenant::create();
+    $this->mock(Illuminate\Contracts\Bus\Dispatcher::class)
+        ->shouldReceive('dispatch')->andThrow(new RuntimeException('Redis no disponible'));
+
+    $this->actingAs(usuarioDeTenant($tenant, 'analista'))
+        ->postJson('/api/reportes', ['tipo' => 'lista_por_riesgo', 'formato' => 'csv', 'nivel_riesgo' => 'todos'])
+        ->assertStatus(500);
+
+    expect(Report::withoutGlobalScopes()->where('tenant_id', $tenant->id)->pluck('estado')->all())->toBe(['fallido']);
+});
+
+it('la ficha cuenta como revisados solo los resultados procesados o descartados', function () {
+    $tenant = Tenant::create();
+    $subject = personaConCoincidencias($tenant);
+    tenancy()->initialize($tenant);
+    App\Models\SearchResult::factory()->count(2)->create(['subject_id' => $subject->id]);
+    $revisado = App\Models\SearchResult::factory()->create(['subject_id' => $subject->id]);
+    $revisado->forceFill(['estado' => App\Enums\EstadoSearchResult::Descartado])->save();
+    $reporte = Report::create(['tipo' => 'ficha_persona', 'formato' => 'pdf', 'parametros' => ['subject_id' => $subject->id]]);
+    $datos = app(App\Services\Reportes\ConstructorReportes::class)->construir($reporte)['datos'];
+    tenancy()->end();
+
+    expect($datos['resultados'])->toBe(1);
 });

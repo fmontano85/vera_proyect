@@ -14,9 +14,10 @@ use Illuminate\Queue\SerializesModels;
 use Stancl\Tenancy\Contracts\Tenant;
 
 /**
- * Cruza todos los subjects activos de todos los tenants contra las listas
- * de sanciones (seccion 3.4). Solo usa la BD y Meilisearch propios: cero
- * llamadas a servicios de pago (seccion 7). Idempotente.
+ * Cruza todos los subjects activos de todos los tenants CON Sanciones
+ * habilitada (App\Policies\TenantPolicy, panel de superadmin) contra las
+ * listas de sanciones (seccion 3.4). Solo usa la BD y Meilisearch
+ * propios: cero llamadas a servicios de pago (seccion 7). Idempotente.
  *
  * Se recorre por tenant con runForMultiple(): SanctionMatch usa
  * BelongsToTenant y sin contexto inicializado fallaria abierto.
@@ -33,6 +34,13 @@ class MatchSanctionsJob implements ShouldQueue
     public function handle(CruceSanciones $cruce = new CruceSanciones): void
     {
         tenancy()->runForMultiple(null, function (Tenant $tenant) use ($cruce) {
+            // Deshabilitada por defecto (decision del usuario 2026-09-28):
+            // sin esto, un tenant sin Sanciones habilitada de todos modos
+            // pagaria el costo de cruzar cada subject cada semana.
+            if (! $tenant->sanciones_habilitado) {
+                return;
+            }
+
             Subject::query()->where('activo', true)->with('aliases')->each(
                 fn (Subject $subject) => $cruce->cruzar($subject)
             );

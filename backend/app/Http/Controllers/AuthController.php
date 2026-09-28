@@ -60,9 +60,14 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
+        // tenant() no esta inicializado en esta ruta (fuera del grupo
+        // 'tenant' - superadmin no tiene tenant_id): se lee directo de la
+        // relacion, no del helper. Para que el frontend oculte "Sanciones"
+        // sin tener que golpear el endpoint y recibir 404.
         return response()->json([
             ...$user->toArray(),
             'roles' => $user->getRoleNames(),
+            'sanciones_habilitado' => (bool) ($user->tenant?->sanciones_habilitado ?? false),
         ]);
     }
 

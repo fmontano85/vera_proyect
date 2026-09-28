@@ -34,7 +34,12 @@ class InicioController extends Controller
             'coincidencias_esperan_resolucion' => MentionMatch::query()->enBandeja('esperan_resolucion')->count(),
             'seguimientos_vencidos' => Subject::query()->vencidosAl($hoy->toDateString())->count(),
             'seguimientos_proximos_7_dias' => Subject::query()->proximosAl($hoy, self::DIAS_PROXIMOS)->count(),
-            'sanciones_pendientes' => SanctionMatch::query()->where('estado', 'pendiente')->count(),
+            // 0 si el tenant no tiene Sanciones habilitada (panel de
+            // superadmin) - sin esto, un tenant sin la funcion veria un
+            // contador de algo que no puede abrir.
+            'sanciones_pendientes' => tenant('sanciones_habilitado')
+                ? SanctionMatch::query()->where('estado', 'pendiente')->count()
+                : 0,
             'resultados_gap' => SearchResult::query()->where('estado', EstadoSearchResult::Gap)->count(),
         ]);
     }

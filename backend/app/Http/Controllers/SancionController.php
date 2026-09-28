@@ -18,12 +18,21 @@ use Illuminate\Validation\Rule;
 use Meilisearch\Exceptions\ExceptionInterface as MeilisearchException;
 use RuntimeException;
 
-/** Hallazgos contra listas de sanciones (OFAC SDN hoy). Delgado: la logica vive en Services/Actions. */
+/**
+ * Hallazgos contra listas de sanciones (OFAC SDN hoy). Delgado: la logica
+ * vive en Services/Actions.
+ *
+ * Sanciones esta deshabilitada por defecto (decision del usuario
+ * 2026-09-28): solo el superadmin la activa por tenant (panel de
+ * superadmin, App\Http\Controllers\SuperadminController). 404 y no 403
+ * para no confirmar que la funcion existe a un tenant sin ella.
+ */
 class SancionController extends Controller
 {
     public function index(Request $request, ListarSanciones $action): JsonResponse
     {
         $this->authorize('viewAny', SanctionMatch::class);
+        $this->verificarHabilitado();
 
         $filtros = $request->validate([
             'estado' => ['nullable', Rule::in(['pendiente', 'todos'])],
@@ -37,6 +46,7 @@ class SancionController extends Controller
     {
         $this->authorize('view', $subject);
         Gate::authorize('cruzar', SanctionMatch::class);
+        $this->verificarHabilitado();
 
         // Solo un fallo real de Meilisearch se etiqueta como "indice no
         // disponible" (503) - cualquier otra excepcion (un bug de codigo)
@@ -58,6 +68,7 @@ class SancionController extends Controller
         SerializadorSancion $serializador,
     ): JsonResponse {
         $this->authorize('resolver', $sancion);
+        $this->verificarHabilitado();
 
         $validated = $request->validate([
             'estado' => ['required', Rule::in(['confirmado', 'falso_positivo', 'homonimo'])],
@@ -70,5 +81,10 @@ class SancionController extends Controller
         }
 
         return response()->json($serializador->serializar($sancion->load(SerializadorSancion::RELACIONES)));
+    }
+
+    private function verificarHabilitado(): void
+    {
+        abort_unless(tenant('sanciones_habilitado'), 404);
     }
 }

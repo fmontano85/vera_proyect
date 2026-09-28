@@ -14,6 +14,7 @@ use App\Http\Controllers\SearchTagController;
 use App\Http\Controllers\SeguimientoController;
 use App\Http\Controllers\SubjectAliasController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\SuperadminController;
 use App\Http\Controllers\TagSearchController;
 use App\Http\Controllers\UsuarioController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,19 @@ Route::middleware(['auth:sanctum', 'activo'])->get('/user', [AuthController::cla
 Route::middleware(['auth:sanctum', 'activo'])->group(function () {
     Route::patch('cuenta', [CuentaController::class, 'actualizar']);
     Route::post('cuenta/contrasena', [CuentaController::class, 'cambiarContrasena'])->middleware('throttle:5,1');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Panel de superadmin (seccion 3.2 - fuera de las rutas de tenant)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum', 'activo'])->prefix('superadmin')->group(function () {
+    Route::get('tenants', [SuperadminController::class, 'tenants']);
+    Route::patch('tenants/{tenant}', [SuperadminController::class, 'actualizarTenant']);
+    Route::get('configuracion-sanciones', [SuperadminController::class, 'verConfiguracionSanciones']);
+    Route::put('configuracion-sanciones', [SuperadminController::class, 'actualizarConfiguracionSanciones']);
+    Route::post('sanciones/actualizar-lista', [SuperadminController::class, 'actualizarListaSanciones']);
 });
 
 /*

@@ -18,6 +18,18 @@ uses(TestCase::class)->in('Unit');
  * dia en que User necesite un atributo mas o cambie el mecanismo de
  * asignacion de tenant.
  */
+/** Sanciones deshabilitada por defecto (decision del usuario 2026-09-28,
+ * solo el superadmin la activa por tenant): los tests que ejercitan la
+ * funcion la habilitan explicito con este helper en vez de repetir
+ * `->forceFill(['sanciones_habilitado' => true])->save()` en cada uno. */
+function tenantConSanciones(): Tenant
+{
+    $tenant = Tenant::create();
+    $tenant->forceFill(['sanciones_habilitado' => true])->save();
+
+    return $tenant;
+}
+
 function usuarioDeTenant(Tenant $tenant, string $rol, array $atributos = []): User
 {
     $user = User::factory()->create($atributos);

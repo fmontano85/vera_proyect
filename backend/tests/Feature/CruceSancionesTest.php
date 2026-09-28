@@ -45,7 +45,7 @@ beforeEach(function () {
 });
 
 it('cruza un subject activo contra las sanciones y deja el hallazgo pendiente', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     $nombre = 'Zzyzx Qwertyuiop Mbabazi';
     $entrada = SanctionEntry::factory()->create(['nombre' => $nombre]);
     esperarSancionIndexada($nombre);
@@ -67,7 +67,7 @@ it('cruza un subject activo contra las sanciones y deja el hallazgo pendiente', 
 });
 
 it('tambien cruza por los aliases del subject', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     $entrada = SanctionEntry::factory()->create(['nombre' => 'Vvxkq Rrtplm Ooiuyt']);
     esperarSancionIndexada('Vvxkq Rrtplm Ooiuyt');
 
@@ -84,7 +84,7 @@ it('tambien cruza por los aliases del subject', function () {
 });
 
 it('no genera hallazgos por debajo del umbral ni para subjects inactivos', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     SanctionEntry::factory()->create(['nombre' => 'Kkjhgf Ddsaqw Pplmnb']);
     esperarSancionIndexada('Kkjhgf Ddsaqw Pplmnb');
 
@@ -101,7 +101,7 @@ it('no genera hallazgos por debajo del umbral ni para subjects inactivos', funct
 });
 
 it('es idempotente y no reabre un hallazgo ya resuelto', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     $nombre = 'Xxcvbn Llkjhg Ttrewq';
     $entrada = SanctionEntry::factory()->create(['nombre' => $nombre]);
     esperarSancionIndexada($nombre);
@@ -124,8 +124,8 @@ it('es idempotente y no reabre un hallazgo ya resuelto', function () {
 });
 
 it('no cruza tenants: cada hallazgo queda en el tenant de su subject', function () {
-    $a = Tenant::create();
-    $b = Tenant::create();
+    $a = tenantConSanciones();
+    $b = tenantConSanciones();
     $nombre = 'Ggfdsa Hhjklp Uuyter';
     SanctionEntry::factory()->create(['nombre' => $nombre]);
     esperarSancionIndexada($nombre);
@@ -142,7 +142,7 @@ it('no cruza tenants: cada hallazgo queda en el tenant de su subject', function 
 });
 
 it('hace un solo request de multi-search a Meilisearch para nombre + aliases, no uno por nombre', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create();
     SubjectAlias::factory()->for($subject, 'subject')->create();
@@ -160,7 +160,7 @@ it('hace un solo request de multi-search a Meilisearch para nombre + aliases, no
 });
 
 it('MatchSanctionsJob usa la relacion aliases ya cargada, no una query por subject', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     tenancy()->initialize($tenant);
     Subject::factory()->count(3)->create();
     tenancy()->end();
@@ -179,7 +179,7 @@ it('MatchSanctionsJob usa la relacion aliases ya cargada, no una query por subje
 });
 
 it('un fallo real de Meilisearch al cruzar responde 503, no un error generico', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create();
     tenancy()->end();
@@ -197,7 +197,7 @@ it('un fallo real de Meilisearch al cruzar responde 503, no un error generico', 
 });
 
 it('un error de codigo al cruzar (no de Meilisearch) no se disfraza de indice caido', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     tenancy()->initialize($tenant);
     $subject = Subject::factory()->create();
     tenancy()->end();
@@ -211,7 +211,7 @@ it('un error de codigo al cruzar (no de Meilisearch) no se disfraza de indice ca
 });
 
 it('el endpoint cruza un subject bajo demanda; lectura no puede', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     $nombre = 'Qazwsx Edcrfv Tgbyhn';
     SanctionEntry::factory()->create(['nombre' => $nombre]);
     esperarSancionIndexada($nombre);
@@ -225,9 +225,42 @@ it('el endpoint cruza un subject bajo demanda; lectura no puede', function () {
         ->assertOk()->assertJsonPath('hallazgos_nuevos', 1);
 });
 
+it('un tenant sin Sanciones habilitada recibe 404 en los 3 endpoints (deshabilitada por defecto)', function () {
+    $tenant = Tenant::create(); // sin tenantConSanciones(): sanciones_habilitado queda false
+    tenancy()->initialize($tenant);
+    $subject = Subject::factory()->create();
+    tenancy()->end();
+    $user = usuarioDeTenant($tenant, 'admin');
+
+    $this->actingAs($user)->getJson('/api/sanciones')->assertNotFound();
+    $this->actingAs($user)->postJson("/api/subjects/{$subject->id}/sanciones/cruzar")->assertNotFound();
+
+    tenancy()->initialize($tenant);
+    $hallazgo = SanctionMatch::factory()->for($subject, 'subject')->create();
+    tenancy()->end();
+    $this->actingAs($user)->postJson("/api/sanciones/{$hallazgo->id}/resolver", ['estado' => 'confirmado'])->assertNotFound();
+});
+
+it('MatchSanctionsJob no cruza subjects de un tenant sin Sanciones habilitada', function () {
+    $tenant = Tenant::create();
+    $nombre = 'Zzxcvb Nmlkjh Gfdsaq';
+    SanctionEntry::factory()->create(['nombre' => $nombre]);
+    esperarSancionIndexada($nombre);
+
+    tenancy()->initialize($tenant);
+    Subject::factory()->create(['nombre_canonico' => $nombre]);
+    tenancy()->end();
+
+    (new MatchSanctionsJob)->handle();
+
+    tenancy()->initialize($tenant);
+    expect(SanctionMatch::count())->toBe(0);
+    tenancy()->end();
+});
+
 it('lista los hallazgos del tenant con la entrada de la lista, sin mezclar tenants', function () {
-    $a = Tenant::create();
-    $b = Tenant::create();
+    $a = tenantConSanciones();
+    $b = tenantConSanciones();
     $entrada = SanctionEntry::factory()->create(['sanction_list_id' => SanctionList::firstOrCreate(['codigo' => 'ofac_sdn'])->id, 'nombre' => 'Lista Nombre', 'programa' => 'SDGT']);
 
     tenancy()->initialize($a);
@@ -246,7 +279,7 @@ it('lista los hallazgos del tenant con la entrada de la lista, sin mezclar tenan
 });
 
 it('filtra por estado y por subject', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     tenancy()->initialize($tenant);
     $s1 = Subject::factory()->create();
     $s2 = Subject::factory()->create();
@@ -261,7 +294,7 @@ it('filtra por estado y por subject', function () {
 });
 
 it('solo oficial_cumplimiento y admin resuelven; queda auditado con quien y cuando', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     tenancy()->initialize($tenant);
     $hallazgo = hallazgoSancion(['estado' => 'pendiente']);
     tenancy()->end();
@@ -282,7 +315,7 @@ it('solo oficial_cumplimiento y admin resuelven; queda auditado con quien y cuan
 });
 
 it('rechaza resolver un hallazgo ya resuelto, un estado invalido y pendiente', function () {
-    $tenant = Tenant::create();
+    $tenant = tenantConSanciones();
     tenancy()->initialize($tenant);
     $resuelto = hallazgoSancion(['estado' => 'confirmado']);
     $pendiente = hallazgoSancion(['estado' => 'pendiente']);
@@ -295,8 +328,8 @@ it('rechaza resolver un hallazgo ya resuelto, un estado invalido y pendiente', f
 });
 
 it('no se puede resolver un hallazgo de otro tenant', function () {
-    $a = Tenant::create();
-    $b = Tenant::create();
+    $a = tenantConSanciones();
+    $b = tenantConSanciones();
     tenancy()->initialize($a);
     $hallazgo = hallazgoSancion(['estado' => 'pendiente']);
     tenancy()->end();

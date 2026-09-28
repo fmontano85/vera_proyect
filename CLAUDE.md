@@ -251,7 +251,7 @@ Detalle de cada bloque en "En qué estábamos" (bloques 12 a 15). Commits en `de
 
 ### Contexto para retomar (sesión 2026-09-25)
 - Contenedores Docker quedaron **arriba**. El dev server de Vite corría como tarea de fondo de la sesión de Claude Code: al cerrar la sesión se detiene — levantarlo con `cd frontend && npm run dev` (http://localhost:5173).
-- Usuarios de prueba (todos `Demo1234!`): `demo@vera.test` (oficial, tenant del usuario), `qa-admin@vera.test` (admin, tenant demo), `qa-analista-demo@vera.test`, `qa-analista-usuario@vera.test` (analistas). **Los datos de dev son de prueba** (confirmado por el usuario): en QA se puede modificar cualquier tenant sin preguntar; sí pedir confirmación antes de gastar cuota de Brave/Anthropic.
+- Usuarios de prueba (verificado 2026-09-28, todos `Demo1234!`): `qa-superadmin@vera.test` (superadmin), `qa-admin@vera.test` (admin, tenant demo `3b2597d1…`), `qa-analista-demo@vera.test` (analista, demo), `demo@vera.test` (oficial, tenant del usuario `2ea37f71…`), `qa-analista-usuario@vera.test` (analista, tenant del usuario). **No hay** usuario `lectura` ni admin en el tenant del usuario. `smoketest@`, `smoketest2@`, `demo+…@vera.test` son de pruebas viejas con contraseña desconocida. **Los datos de dev son de prueba** (confirmado por el usuario): en QA se puede modificar cualquier tenant sin preguntar; sí pedir confirmación antes de gastar cuota de Brave/Anthropic.
 - Tras cambiar clases de Job/Adapter: `docker exec vera_api php artisan horizon:terminate`. Antes de `npm run build`: detener el dev server (OOM).
 - Pendientes de decisión externos siguen abiertos: SMTP real, frecuencia mínima UIF, derechos de almacenamiento y atribución de Brave, cobertura de LPG.
 

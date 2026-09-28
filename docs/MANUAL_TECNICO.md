@@ -3,7 +3,7 @@
 > Plataforma SaaS multi-tenant de *adverse media screening* y debida diligencia para sujetos obligados bajo la Ley Contra el Lavado de Dinero y de Activos (El Salvador), con expansión prevista a Guatemala, Honduras y Costa Rica.
 > Arquitectura multi-tenant de base de datos única (`tenant_id` + global scope), API REST en Laravel, frontend SPA en React, todo en Docker Compose (backend) + Node.js en el host (frontend).
 
-> **Estado del proyecto (2026-09-26):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales y con `webapp-testing` (Playwright). **261 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC y atribución a Brave. Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
+> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **282 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Primera pantalla de un panel de superadmin (`/superadmin`). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
 
 ---
 
@@ -198,7 +198,7 @@ Verificar que levantó todo:
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}"
 curl -i http://localhost:8000/api/user   # debe responder 401 (Sanctum activo, sin sesion)
-docker exec vera_api php artisan test    # deben pasar 261 tests
+docker exec vera_api php artisan test    # deben pasar 282 tests
 ```
 
 API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`, Redis en `:6379` (contenedor propio solo en dev, vía `docker-compose.override.yml`).
@@ -480,7 +480,24 @@ Usuarios resultantes (contraseña de todos: `Demo1234!`, solo para desarrollo):
 
 > **IMPORTANTE:** el email es único. Si ejecutas el bloque dos veces falla con "Duplicate entry"; borra los usuarios previos o cambia los emails. Estas contraseñas son solo de desarrollo: en producción usa contraseñas fuertes y únicas.
 
-Probar el login: `http://localhost:5173/login` (frontend corriendo con `npm run dev`).
+Probar el login en `http://localhost:5173/login`. Si el frontend no está corriendo:
+
+```bash
+cd frontend   # el package.json vive ahi, no en la raiz del repo
+npm run dev
+```
+
+### 7.1 Panel de superadmin (`/superadmin`, implementado 2026-09-28)
+
+Primera pantalla real de un panel de superadmin (el resto — alta de tenants, planes, facturación — sigue en Fase 3). Fuera de las rutas de tenant (`auth:sanctum` + `activo`, sin el middleware `tenant`): el usuario `superadmin` no tiene `tenant_id` y ninguna pantalla de `/subjects`, `/coincidencias`, etc. le sirve — al iniciar sesión se le redirige directo a `/superadmin`, y si visita cualquier otra pantalla se le redirige de vuelta ahí.
+
+**Qué gestiona hoy, ambos con auditoría en `activity_log`:**
+- **Sanciones (cruce contra OFAC SDN) por tenant** — `sanciones_habilitado` en `tenants`, **`false` por defecto en todo tenant nuevo**. Sin esto habilitado, el tenant no ve el ítem "Sanciones" en el menú, el contador de Inicio, ni las 3 rutas de `SancionController` (responden 404, no 403, para no confirmar que la función existe). `MatchSanctionsJob` salta los tenants sin la función habilitada.
+- **Modo de descarga de la lista OFAC** (`configuracion_sanciones`, fila única global — la lista es un catálogo compartido por todos los tenants, no tiene sentido un modo distinto por cada uno): `automatico` (default, corre el domingo 02:00) o `manual`. En modo manual, el botón "Actualizar lista ahora" del panel es la única forma de refrescarla — dispara el mismo `Bus::chain([ImportSanctionListsJob, MatchSanctionsJob])` de la sección 10 sin esperar al domingo.
+
+**Endpoints:** `GET /api/superadmin/tenants`, `PATCH /api/superadmin/tenants/{tenant}`, `GET/PUT /api/superadmin/configuracion-sanciones`, `POST /api/superadmin/sanciones/actualizar-lista`. Autorización via `TenantPolicy::gestionar` (registrada a mano en `AppServiceProvider::boot()` — `Tenant` es un modelo de `stancl/tenancy`, el autodescubrimiento de policies de Laravel no lo encuentra solo).
+
+> **IMPORTANTE:** los tenants no tienen nombre por defecto (`tenants.name`, columna nueva, nullable). El panel los muestra como "Sin nombre" hasta que se les asigne uno — hoy no hay UI para eso, solo por tinker: `\Stancl\Tenancy\Database\Models\Tenant::find($id)->update(['name' => 'Empresa X'])`.
 
 ---
 
@@ -490,7 +507,7 @@ Roles de la sección 3.2 del `CLAUDE.md` raíz, gestionados con `spatie/laravel-
 
 | Rol | Alcance |
 |-----|---------|
-| `superadmin` | Gestión de tenants, planes, facturación, fuentes globales. **No** accede a datos de negocio de ningún tenant — el middleware `tenant` lo rechaza (403). |
+| `superadmin` | Gestión de tenants, planes, facturación, fuentes globales — incluido el panel de la sección 7.1. **No** accede a datos de negocio de ningún tenant — el middleware `tenant` lo rechaza (403). |
 | `admin` | Gestión de usuarios y configuración del tenant; todo lo de `oficial_cumplimiento`. |
 | `oficial_cumplimiento` | Resuelve coincidencias en firme, gestiona la lista de vigilancia (alta, aliases, activar/desactivar), captura manual, configura frecuencias de seguimiento del tenant (solo `admin` en este último punto). |
 | `analista` | Ejecuta consultas puntuales, propone resoluciones (no resuelve en firme), da de alta sujetos y edita datos básicos/aliases/frecuencia por sujeto, marca seguimientos realizados. No activa/desactiva sujetos ni hace captura manual. |
@@ -524,7 +541,7 @@ docker exec vera_api php artisan db:seed --class=Database\\Seeders\\RoleSeeder
 | **Captura manual** de un GAP | **solo** `admin`, `oficial_cumplimiento` | Queda ya resuelta, sin pasar por proponer→resolver — mismo criterio que resolver un match |
 | Configurar días por nivel de riesgo del tenant | **solo** `admin` | `ConfiguracionController` |
 
-`superadmin` recibe 403 en absolutamente todas las rutas de este grupo.
+`superadmin` recibe 403 en absolutamente todas las rutas de este grupo (`auth:sanctum` + `tenant`) — su alcance vive aparte, fuera de las rutas de tenant (sección 7.1).
 
 ---
 
@@ -559,7 +576,7 @@ Tareas programadas (`backend/routes/console.php`):
 |-------|-----------|----------|
 | `DetectarSeguimientosVencidosJob` | Diario 07:00 `America/El_Salvador` (`schedule:list` la muestra en UTC) | Solo BD propia: crea una alerta por sujeto con `proximo_seguimiento_en <= hoy` (idempotente por tenant+alertable+vencimiento) y encola `SendAlertJob` (correo de resumen por tenant a `oficial_cumplimiento` + `admin`, solo si hay vencimientos nuevos) |
 | `ReconciliarIndiceSubjectsJob` | Diario 03:00 `America/El_Salvador` | Reindexa en Meilisearch (self-hosted, sin costo) todos los subjects según su estado real en la BD — red de seguridad para el gotcha de que un `SubjectAlias` nuevo no dispara el observer de Scout del `Subject` padre |
-| `ImportSanctionListsJob` → `MatchSanctionsJob` (cadena `sanciones-importar-y-cruzar`) | Semanal, domingo 02:00 `America/El_Salvador` | Descarga OFAC SDN (pública y gratuita; único adaptador con URL vigente confirmada, ONU/UE sin adaptador), la reindexa en Meilisearch (`sanction_entries`) y, solo si la importación terminó bien, cruza todos los subjects activos de todos los tenants. Los hallazgos nacen `pendiente` y los resuelve una persona. Cero servicios de pago |
+| `ActualizarListaOfacProgramadaJob` → `ImportSanctionListsJob` → `MatchSanctionsJob` | Semanal, domingo 02:00 `America/El_Salvador` | Solo dispara la cadena si el modo de descarga global es `automatico` (sección 7.1 — en `manual` no hace nada, se niega en silencio). Descarga OFAC SDN (pública y gratuita; único adaptador con URL vigente confirmada, ONU/UE sin adaptador), la reindexa en Meilisearch (`sanction_entries`) y, solo si la importación terminó bien, cruza los subjects activos de los tenants **con Sanciones habilitada** (el resto se salta, `MatchSanctionsJob` lo revisa por tenant). Los hallazgos nacen `pendiente` y los resuelve una persona. Cero servicios de pago |
 
 Al desplegar la agenda de seguimiento sobre una base con sujetos existentes, correr una vez (idempotente):
 ```bash
@@ -716,7 +733,7 @@ npm run lint        # oxlint
 
 ## 15. Feature Tests
 
-El proyecto usa Pest. **261 tests pasan** (verificado 2026-09-26). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
+El proyecto usa Pest. **282 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
 
 ```bash
 docker exec vera_api php artisan test              # suite completa

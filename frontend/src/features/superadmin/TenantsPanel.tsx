@@ -1,4 +1,5 @@
-import { Check, Eraser, MoreHorizontal, Pencil, Plus, ShieldAlert, X } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Check, Download, Eraser, MoreHorizontal, Pencil, Plus, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -26,7 +28,7 @@ import {
   useCrearTenantSuperadmin,
   useTenantsSuperadmin,
 } from '@/features/superadmin/useSuperadmin';
-import { mensajeApi } from '@/lib/api';
+import { api, mensajeApi } from '@/lib/api';
 import type { TenantSuperadmin } from '@/types/superadmin';
 
 /** Tenants de la plataforma: alta con su primer admin, renombrado, Sanciones y depuracion por tenant. */
@@ -67,6 +69,18 @@ function TenantFila({ tenant }: { tenant: TenantSuperadmin }) {
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(tenant.name ?? '');
   const [confirmarDepuracion, setConfirmarDepuracion] = useState(false);
+  const [bajaAbierta, setBajaAbierta] = useState(false);
+
+  /** Seccion 3.9, punto 6: devolucion de datos al cliente. Requisito de la baja. */
+  async function exportar() {
+    const aviso = toast.loading('Preparando la exportación…');
+    try {
+      await api.download(`/api/superadmin/tenants/${tenant.id}/exportar`);
+      toast.success('Exportación descargada. Quedó registrada en la bitácora.', { id: aviso });
+    } catch (e) {
+      toast.error(mensajeApi(e, 'No se pudo exportar.'), { id: aviso });
+    }
+  }
 
   function cambiar(cambios: { sanciones_habilitado?: boolean; depuracion_habilitada?: boolean }, mensaje: string) {
     actualizar.mutate(
@@ -167,9 +181,20 @@ function TenantFila({ tenant }: { tenant: TenantSuperadmin }) {
               <Eraser />
               {tenant.depuracion_habilitada ? 'Deshabilitar depuración' : 'Habilitar depuración'}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={exportar}>
+              <Download />
+              Exportar todos sus datos
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onSelect={() => setBajaAbierta(true)}>
+              <Trash2 />
+              Dar de baja
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {bajaAbierta && <BajaTenantDialog tenant={tenant} onOpenChange={setBajaAbierta} />}
 
       <Dialog open={confirmarDepuracion} onOpenChange={setConfirmarDepuracion}>
         <DialogContent>
@@ -197,6 +222,57 @@ function TenantFila({ tenant }: { tenant: TenantSuperadmin }) {
         </DialogContent>
       </Dialog>
     </li>
+  );
+}
+
+/**
+ * Baja definitiva de un tenant (seccion 3.9, punto 6). El backend exige una
+ * exportacion en los ultimos 7 dias y confirmar el nombre; si falta la
+ * exportacion responde 422 con el motivo, que se muestra tal cual.
+ */
+function BajaTenantDialog({ tenant, onOpenChange }: { tenant: TenantSuperadmin; onOpenChange: (abierto: boolean) => void }) {
+  const [confirmacion, setConfirmacion] = useState('');
+  const queryClient = useQueryClient();
+  const esperado = tenant.name ?? tenant.id;
+  const baja = useMutation({
+    mutationFn: () => api.post<void>(`/api/superadmin/tenants/${tenant.id}/baja`, { confirmacion }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['superadmin'] });
+      toast.success(`Tenant "${esperado}" dado de baja y sus datos eliminados.`);
+      onOpenChange(false);
+    },
+    onError: (e) => toast.error(mensajeApi(e, 'No se pudo dar de baja.')),
+  });
+  const coincide = confirmacion.trim().toLocaleLowerCase('es') === esperado.trim().toLocaleLowerCase('es');
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Dar de baja este tenant</DialogTitle>
+          <DialogDescription>
+            Se borran de forma permanente sus personas vigiladas, búsquedas, evidencia, usuarios, configuración y
+            bitácora. En la bitácora de la plataforma solo quedará constancia de la baja.{' '}
+            <span className="text-foreground font-medium">No se puede deshacer.</span> Antes debes exportar sus datos
+            (en los últimos 7 días) para entregárselos al cliente.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2 py-2">
+          <Label htmlFor={`baja-${tenant.id}`}>
+            Escribe <span className="font-semibold break-all">{esperado}</span> para confirmar
+          </Label>
+          <Input id={`baja-${tenant.id}`} autoComplete="off" value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={baja.isPending} onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" disabled={!coincide || baja.isPending} onClick={() => baja.mutate()}>
+            {baja.isPending ? 'Dando de baja…' : 'Dar de baja definitivamente'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

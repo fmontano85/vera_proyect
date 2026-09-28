@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
-use RuntimeException;
+use App\Exceptions\OperacionNoPermitida;
 use Stancl\Tenancy\Database\Models\Tenant;
 
 /**
@@ -83,7 +83,7 @@ class DocumentoLegalSuperadminController extends Controller
 
         try {
             $documento = $action->handle($documento, $request->user());
-        } catch (RuntimeException $e) {
+        } catch (OperacionNoPermitida $e) {
             return response()->json(['mensaje' => $e->getMessage()], 422);
         }
 

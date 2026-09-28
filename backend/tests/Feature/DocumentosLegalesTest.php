@@ -183,3 +183,12 @@ it('el superadmin ve en cada tenant si tiene los documentos al dia', function ()
     expect($tenants->firstWhere('id', $alDia->id)['documentos_al_dia'])->toBeTrue()
         ->and($tenants->firstWhere('id', $pendiente->id)['documentos_al_dia'])->toBeFalse();
 });
+
+it('un error inesperado al aceptar no se disfraza de 422', function () {
+    $admin = usuarioDeTenant(Tenant::create(), 'admin');
+    $doc = publicado();
+    $this->mock(App\Actions\ProteccionDatos\AceptarDocumentoLegal::class)
+        ->shouldReceive('handle')->andThrow(new RuntimeException('SQLSTATE[HY000]: Lock wait timeout'));
+
+    $this->actingAs($admin)->postJson("/api/documentos-legales/{$doc->id}/aceptar")->assertStatus(500);
+});

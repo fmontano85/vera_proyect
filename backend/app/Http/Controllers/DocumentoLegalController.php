@@ -11,7 +11,7 @@ use App\Services\ProteccionDatos\SerializadorDocumentoLegal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use RuntimeException;
+use App\Exceptions\OperacionNoPermitida;
 
 /**
  * Documentos legales vigentes vistos desde un tenant (seccion 3.9, punto
@@ -37,7 +37,7 @@ class DocumentoLegalController extends Controller
 
         try {
             $aceptacion = $action->handle($documento, $request->user(), $request->ip());
-        } catch (RuntimeException $e) {
+        } catch (OperacionNoPermitida $e) {
             return response()->json(['mensaje' => $e->getMessage()], 422);
         }
 

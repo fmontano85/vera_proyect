@@ -7,7 +7,7 @@ namespace App\Actions\ProteccionDatos;
 use App\Models\DocumentoLegal;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
+use App\Exceptions\OperacionNoPermitida;
 
 /**
  * Publica un borrador como la siguiente version de su tipo (seccion 3.9,
@@ -23,7 +23,7 @@ class PublicarDocumentoLegal
             $documento = DocumentoLegal::query()->lockForUpdate()->findOrFail($documento->id);
 
             if (! $documento->esBorrador()) {
-                throw new RuntimeException('Esta versión ya está publicada.');
+                throw new OperacionNoPermitida('Esta versión ya está publicada.');
             }
 
             $ultima = DocumentoLegal::query()->where('tipo', $documento->tipo)->publicados()

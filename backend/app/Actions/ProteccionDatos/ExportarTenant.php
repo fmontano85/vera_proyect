@@ -11,10 +11,10 @@ use App\Models\SearchResult;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Bitacora\SerializadorBitacora;
+use App\Support\ArchivoZip;
 use App\Support\ConfiguracionTenant;
-use RuntimeException;
 use Stancl\Tenancy\Database\Models\Tenant;
-use ZipArchive;
+use Throwable;
 
 /**
  * Exportacion completa de un tenant para devolverle sus datos al cliente
@@ -35,22 +35,34 @@ class ExportarTenant
 
     public function handle(Tenant $tenant, User $superadmin): string
     {
-        $ruta = tempnam(sys_get_temp_dir(), 'vera-tenant-');
-        $zip = new ZipArchive;
+        $zip = new ArchivoZip('vera-tenant-');
 
-        if ($zip->open($ruta, ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException('No se pudo crear el archivo de exportación.');
+        try {
+            $this->llenar($zip, $tenant, $superadmin);
+
+            return $zip->cerrar();
+        } catch (Throwable $e) {
+            $zip->descartar();
+            throw $e;
         }
+    }
 
+    /**
+     * El registro 'tenant_exportado' (requisito de la baja) no se hace aqui:
+     * lo hace el controlador solo cuando la descarga se entrego completa
+     * (App\Support\DescargaZip).
+     */
+    private function llenar(ArchivoZip $zip, Tenant $tenant, User $superadmin): void
+    {
         $tenant->run(function () use ($tenant, $superadmin, $zip) {
-            $zip->addFromString('tenant.json', ExportarSubject::json($this->general($tenant)));
+            $zip->agregarTexto('tenant.json', ExportarSubject::json($this->general($tenant)));
 
-            Subject::query()->orderBy('id')->each(
+            Subject::query()->lazyById(200)->each(
                 fn (Subject $s) => $this->exportarSubject->agregarAlZip($zip, $s, $superadmin, "personas/{$s->id}/")
             );
 
             $porTags = SearchResult::query()->whereNull('subject_id')->with('searchRun')->orderBy('id')->get();
-            $zip->addFromString('busquedas-por-tags.json', ExportarSubject::json($porTags->map(fn (SearchResult $r) => [
+            $zip->agregarTexto('busquedas-por-tags.json', ExportarSubject::json($porTags->map(fn (SearchResult $r) => [
                 'id' => $r->id,
                 'tags' => $r->searchRun?->tags,
                 'url' => $r->url,
@@ -65,13 +77,7 @@ class ExportarTenant
 
         $bitacora = Activity::query()->where('tenant_id', $tenant->id)->with('causer')->orderBy('id')->get()
             ->map(fn (Activity $a) => $this->serializadorBitacora->completo($a))->all();
-        $zip->addFromString('bitacora.json', ExportarSubject::json($bitacora));
-        $zip->close();
-
-        activity()->performedOn($tenant)->causedBy($superadmin)->event('tenant_exportado')
-            ->log('Exportación completa del tenant');
-
-        return $ruta;
+        $zip->agregarTexto('bitacora.json', ExportarSubject::json($bitacora));
     }
 
     /** @return array<string, mixed> */

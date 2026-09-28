@@ -28,8 +28,11 @@ class Activity extends ActivityBase
 
     /**
      * Orden: tenancy activa (request de tenant, jobs con $tenant->run());
-     * accion del superadmin sobre un tenant; tenant del causante (login,
-     * logout y cuenta propia corren fuera del grupo 'tenant').
+     * accion del superadmin sobre un tenant; tenant del modelo auditado (ej.
+     * el superadmin crea el primer admin de un tenant: el causante no tiene
+     * tenant, el usuario creado si - hallazgo del code-review 2026-09-28);
+     * tenant del causante (login, logout y cuenta propia corren fuera del
+     * grupo 'tenant').
      */
     private static function tenantDe(Activity $actividad): ?string
     {
@@ -39,6 +42,11 @@ class Activity extends ActivityBase
 
         if ($actividad->subject_type === Tenant::class) {
             return (string) $actividad->subject_id;
+        }
+
+        $delModelo = $actividad->subject?->getAttribute('tenant_id');
+        if (is_string($delModelo) && $delModelo !== '') {
+            return $delModelo;
         }
 
         $causante = $actividad->causer;

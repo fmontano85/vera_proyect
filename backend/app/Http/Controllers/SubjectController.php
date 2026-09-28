@@ -14,6 +14,7 @@ use App\Actions\Subjects\ListarSubjects;
 use App\Models\MentionMatch;
 use App\Models\Subject;
 use App\Services\Seguimiento\CalculadoraSeguimiento;
+use App\Support\DescargaZip;
 use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -77,16 +78,11 @@ class SubjectController extends Controller
     {
         $this->authorize('exportar', $subject);
 
-        $ruta = $action->handle($subject, $request->user());
-        RegistroDeAccesos::registrar('datos_exportados', 'Datos de la persona exportados', $subject);
-
-        return response()->streamDownload(function () use ($ruta) {
-            readfile($ruta);
-            @unlink($ruta);
-        }, "persona-{$subject->id}.zip", [
-            'Content-Type' => 'application/zip',
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return DescargaZip::responder(
+            $action->handle($subject, $request->user()),
+            "persona-{$subject->id}.zip",
+            fn () => RegistroDeAccesos::registrar('datos_exportados', 'Datos de la persona exportados', $subject),
+        );
     }
 
     /**

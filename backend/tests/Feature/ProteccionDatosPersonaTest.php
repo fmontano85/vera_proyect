@@ -269,3 +269,80 @@ it('respeta un plazo de retencion mayor configurado por el tenant', function () 
 
     expect(DB::table('subjects')->where('id', $persona->id)->exists())->toBeTrue();
 });
+
+// ── Correcciones del /code-review high (2026-09-28) ─────────────────────
+
+/**
+ * Captura manual hecha sobre un resultado de busqueda por tags (sin
+ * persona) y atribuida a $subject: su PDF es evidencia de esa persona.
+ */
+function capturaManualDesdeTags(Tenant $tenant, Subject $subject): SearchResult
+{
+    tenancy()->initialize($tenant);
+    $run = SearchRun::factory()->create(['subject_id' => null, 'tags' => ['estafa']]);
+    $resultado = SearchResult::factory()->create(['search_run_id' => $run->id, 'subject_id' => null]);
+    $resultado->forceFill([
+        'estado' => EstadoSearchResult::Extraido,
+        'evidencia_manual_path' => "tenants/{$tenant->id}/evidencia-manual/{$resultado->id}.pdf",
+    ])->save();
+    $mencion = Mention::factory()->create(['article_id' => null, 'search_result_id' => $resultado->id, 'confianza' => null]);
+    $mencion->forceFill(['origen' => OrigenMention::Manual])->save();
+    MentionMatch::factory()->create(['mention_id' => $mencion->id, 'subject_id' => $subject->id, 'estado' => 'confirmado']);
+    tenancy()->end();
+    Storage::disk(config('vera.evidencia_manual_disk'))->put($resultado->evidencia_manual_path, '%PDF-tags');
+
+    return $resultado;
+}
+
+it('borrar una persona elimina tambien la evidencia de capturas manuales hechas desde la busqueda por tags', function () {
+    $tenant = Tenant::create();
+    ['subject' => $subject] = personaCompleta($tenant);
+    $deTags = capturaManualDesdeTags($tenant, $subject);
+
+    $this->actingAs(usuarioDeTenant($tenant, 'admin'))
+        ->deleteJson("/api/subjects/{$subject->id}", ['confirmacion' => 'Nombre Secreto Perez'])->assertNoContent();
+
+    expect(Storage::disk(config('vera.evidencia_manual_disk'))->exists($deTags->evidencia_manual_path))->toBeFalse()
+        ->and(DB::table('search_results')->where('id', $deTags->id)->exists())->toBeFalse();
+});
+
+it('la exportacion de una persona incluye las capturas manuales hechas desde la busqueda por tags', function () {
+    $tenant = Tenant::create();
+    ['subject' => $subject] = personaCompleta($tenant);
+    $deTags = capturaManualDesdeTags($tenant, $subject);
+
+    $respuesta = $this->actingAs(usuarioDeTenant($tenant, 'admin'))->get("/api/subjects/{$subject->id}/exportar")->assertOk();
+
+    $ruta = tempnam(sys_get_temp_dir(), 'exp');
+    file_put_contents($ruta, $respuesta->streamedContent());
+    $zip = new ZipArchive;
+    $zip->open($ruta);
+    expect(collect(json_decode($zip->getFromName('persona.json'), true)['resultados'])->pluck('id')->all())->toContain($deTags->id)
+        ->and($zip->getFromName("evidencia-manual/resultado-{$deTags->id}.pdf"))->toBe('%PDF-tags');
+    $zip->close();
+    unlink($ruta);
+});
+
+it('la exportacion solo queda registrada cuando la descarga se entrega', function () {
+    $tenant = Tenant::create();
+    ['subject' => $subject] = personaCompleta($tenant);
+
+    $respuesta = $this->actingAs(usuarioDeTenant($tenant, 'admin'))->get("/api/subjects/{$subject->id}/exportar")->assertOk();
+    expect(Activity::where('event', 'datos_exportados')->exists())->toBeFalse();
+
+    $respuesta->streamedContent();
+    expect(Activity::where('event', 'datos_exportados')->exists())->toBeTrue();
+});
+
+it('la depuracion no se salta personas al recorrer por lotes mientras borra', function () {
+    $tenant = Tenant::create();
+    $tenant->update(['depuracion_habilitada' => true]);
+    $ids = collect(['Una', 'Dos', 'Tres'])->map(fn ($n) => personaCompleta($tenant, "Vencida {$n}")['subject']->id);
+    DB::table('subjects')->whereIn('id', $ids)->update(['activo' => false, 'desactivado_en' => now()->subYears(16)]);
+
+    $job = new DepurarDatosVencidosJob;
+    $job->lote = 1;
+    $job->handle(app(App\Actions\ProteccionDatos\BorrarSubject::class));
+
+    expect(DB::table('subjects')->whereIn('id', $ids)->count())->toBe(0);
+});

@@ -30,6 +30,12 @@ class DepurarDatosVencidosJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /** Personas por lote (publico para probar el recorrido con lotes chicos). */
+    public int $lote = 200;
+
+    /** La primera corrida sobre un tenant grande borra miles: no el default de 60 s de Horizon. */
+    public int $timeout = 3600;
+
     public function __construct()
     {
         $this->onQueue('imports');
@@ -50,6 +56,9 @@ class DepurarDatosVencidosJob implements ShouldQueue
                 ->where('activo', false)
                 ->whereNotNull('desactivado_en')
                 ->where('desactivado_en', '<=', now()->subYears($anios))
+                // lazyById, no each(): each() pagina por offset y al borrar mientras
+                // recorre se salta filas (hallazgo del code-review 2026-09-28).
+                ->lazyById($this->lote)
                 ->each(function (Subject $subject) use ($borrar, &$eliminadas, &$fallidas) {
                     try {
                         $borrar->handle($subject, BorrarSubject::MOTIVO_PLAZO_DE_RETENCION);

@@ -40,4 +40,31 @@ class EstadoDocumentosLegales
     {
         return $this->pendientesDe($tenantId)->isEmpty();
     }
+
+    /**
+     * alDia() de muchos tenants en una sola consulta agrupada (listado del
+     * superadmin; antes era una consulta por tenant).
+     *
+     * @param  list<string>  $tenantIds
+     * @return array<string, bool>
+     */
+    public function alDiaPorTenant(array $tenantIds): array
+    {
+        $vigentes = $this->vigentes ??= DocumentoLegal::vigentes();
+
+        if ($vigentes->isEmpty()) {
+            return array_fill_keys($tenantIds, true);
+        }
+
+        $aceptados = DB::table('aceptaciones_documentos')
+            ->whereIn('tenant_id', $tenantIds)
+            ->whereIn('documento_legal_id', $vigentes->modelKeys())
+            ->groupBy('tenant_id')
+            ->selectRaw('tenant_id, count(distinct documento_legal_id) as total')
+            ->pluck('total', 'tenant_id');
+
+        return collect($tenantIds)
+            ->mapWithKeys(fn (string $id) => [$id => (int) ($aceptados[$id] ?? 0) === $vigentes->count()])
+            ->all();
+    }
 }

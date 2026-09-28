@@ -197,3 +197,28 @@ it('el job semanal dispara la importacion+cruce si el modo es automatico', funct
 
     Bus::assertChained([ImportSanctionListsJob::class, MatchSanctionsJob::class]);
 });
+
+it('el listado de tenants no hace una consulta extra por cada tenant', function () {
+    $super = superadmin();
+    $consultas = function () use ($super) {
+        Illuminate\Support\Facades\DB::flushQueryLog();
+        Illuminate\Support\Facades\DB::enableQueryLog();
+        $this->actingAs($super)->getJson('/api/superadmin/tenants')->assertOk();
+
+        // Solo las consultas de aceptaciones: el resto (usuario, roles) varia entre requests.
+        return collect(Illuminate\Support\Facades\DB::getQueryLog())
+            ->filter(fn (array $q) => str_contains($q['query'], 'aceptaciones_documentos'))->count();
+    };
+
+    // Con un documento vigente: sin vigentes no hay nada que consultar por tenant.
+    $doc = App\Models\DocumentoLegal::create(['tipo' => 'terminos', 'titulo' => 'T', 'contenido' => 'x']);
+    $doc->forceFill(['version' => 1, 'publicado_en' => now()])->save();
+    Tenant::create();
+    Tenant::create();
+    $conDos = $consultas();
+    Tenant::create();
+    Tenant::create();
+    Tenant::create();
+
+    expect($consultas())->toBe($conDos);
+});

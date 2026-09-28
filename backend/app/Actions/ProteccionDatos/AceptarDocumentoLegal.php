@@ -8,7 +8,7 @@ use App\Models\AceptacionDocumento;
 use App\Models\DocumentoLegal;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
-use RuntimeException;
+use App\Exceptions\OperacionNoPermitida;
 
 /**
  * El admin del tenant acepta la version vigente de un documento (seccion
@@ -20,11 +20,11 @@ class AceptarDocumentoLegal
     public function handle(DocumentoLegal $documento, User $admin, ?string $ip): AceptacionDocumento
     {
         if (! DocumentoLegal::vigentes()->contains('id', $documento->id)) {
-            throw new RuntimeException('Solo se puede aceptar la versión vigente de un documento publicado.');
+            throw new OperacionNoPermitida('Solo se puede aceptar la versión vigente de un documento publicado.');
         }
 
         if (AceptacionDocumento::query()->where('documento_legal_id', $documento->id)->exists()) {
-            throw new RuntimeException('Tu organización ya aceptó esta versión.');
+            throw new OperacionNoPermitida('Tu organización ya aceptó esta versión.');
         }
 
         try {
@@ -36,7 +36,7 @@ class AceptarDocumentoLegal
             ]);
         } catch (UniqueConstraintViolationException) {
             // Doble clic simultaneo: la otra peticion ya la registro.
-            throw new RuntimeException('Tu organización ya aceptó esta versión.');
+            throw new OperacionNoPermitida('Tu organización ya aceptó esta versión.');
         }
     }
 }

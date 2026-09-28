@@ -10,9 +10,10 @@ use App\Models\SanctionMatch;
 use App\Models\SearchResult;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\ProteccionDatos\ResultadosDePersona;
+use App\Support\ArchivoZip;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
-use ZipArchive;
+use Throwable;
 
 /**
  * Todo lo que VERA tiene sobre una persona, para que el cliente atienda un
@@ -28,17 +29,16 @@ class ExportarSubject
 
     public function handle(Subject $subject, User $por): string
     {
-        $ruta = tempnam(sys_get_temp_dir(), 'vera-export-');
-        $zip = new ZipArchive;
+        $zip = new ArchivoZip('vera-export-');
 
-        if ($zip->open($ruta, ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException('No se pudo crear el archivo de exportación.');
+        try {
+            $this->agregarAlZip($zip, $subject, $por, '');
+
+            return $zip->cerrar();
+        } catch (Throwable $e) {
+            $zip->descartar();
+            throw $e;
         }
-
-        $this->agregarAlZip($zip, $subject, $por, '');
-        $zip->close();
-
-        return $ruta;
     }
 
     /**
@@ -46,11 +46,12 @@ class ExportarSubject
      * prefijo (vacio para la exportacion individual; 'personas/{id}/' en
      * la exportacion completa del tenant - ExportarTenant).
      */
-    public function agregarAlZip(ZipArchive $zip, Subject $subject, User $por, string $prefijo): void
+    public function agregarAlZip(ArchivoZip $zip, Subject $subject, User $por, string $prefijo): void
     {
         $subject->load('aliases');
 
-        $resultados = SearchResult::query()->where('subject_id', $subject->id)->with('article')->orderBy('id')->get();
+        $resultados = SearchResult::query()->whereIn('id', ResultadosDePersona::ids($subject->id))
+            ->with('article')->orderBy('id')->get();
         $coincidencias = MentionMatch::query()->where('subject_id', $subject->id)->with('mention.article')->orderBy('id')->get();
         $sanciones = SanctionMatch::query()->where('subject_id', $subject->id)->with('sanctionEntry.sanctionList')->orderBy('id')->get();
 
@@ -96,7 +97,7 @@ class ExportarSubject
             'historial' => collect($this->historial->handle($subject, 10_000)->items())->all(),
         ];
 
-        $zip->addFromString("{$prefijo}persona.json", self::json($datos));
+        $zip->agregarTexto("{$prefijo}persona.json", self::json($datos));
         self::agregarEvidencias($zip, $resultados, $prefijo);
     }
 
@@ -106,12 +107,12 @@ class ExportarSubject
     }
 
     /** @param  iterable<SearchResult>  $resultados */
-    public static function agregarEvidencias(ZipArchive $zip, iterable $resultados, string $prefijo): void
+    public static function agregarEvidencias(ArchivoZip $zip, iterable $resultados, string $prefijo): void
     {
         $disco = Storage::disk(config('vera.evidencia_manual_disk'));
         foreach ($resultados as $r) {
             if ($r->evidencia_manual_path && $disco->exists($r->evidencia_manual_path)) {
-                $zip->addFromString("{$prefijo}evidencia-manual/resultado-{$r->id}.pdf", $disco->get($r->evidencia_manual_path));
+                $zip->agregarDesdeDisco($disco, $r->evidencia_manual_path, "{$prefijo}evidencia-manual/resultado-{$r->id}.pdf");
             }
         }
     }

@@ -10,7 +10,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
+use App\Exceptions\OperacionNoPermitida;
 use Stancl\Tenancy\Database\Models\Tenant;
 use Throwable;
 
@@ -30,6 +30,9 @@ class DarDeBajaTenant
 {
     public const DIAS_EXPORTACION_VALIDA = 7;
 
+    /** Personas por lote (publico para probar el recorrido con lotes chicos). */
+    public int $lote = 200;
+
     public function __construct(private readonly BorrarSubject $borrarSubject) {}
 
     public function exportadoRecientemente(Tenant $tenant): bool
@@ -45,7 +48,7 @@ class DarDeBajaTenant
     public function handle(Tenant $tenant, User $superadmin): array
     {
         if (! $this->exportadoRecientemente($tenant)) {
-            throw new RuntimeException('Antes de dar de baja el tenant exporta sus datos (en los últimos '.self::DIAS_EXPORTACION_VALIDA.' días).');
+            throw new OperacionNoPermitida('Antes de dar de baja el tenant exporta sus datos (en los últimos '.self::DIAS_EXPORTACION_VALIDA.' días).');
         }
 
         $id = (string) $tenant->id;
@@ -53,7 +56,8 @@ class DarDeBajaTenant
         $personas = 0;
 
         $tenant->run(function () use (&$personas) {
-            Subject::query()->each(function (Subject $s) use (&$personas) {
+            // lazyById, no each(): each() pagina por offset y se salta filas al borrar.
+            Subject::query()->lazyById($this->lote)->each(function (Subject $s) use (&$personas) {
                 $this->borrarSubject->handle($s, 'baja_de_tenant');
                 $personas++;
             });

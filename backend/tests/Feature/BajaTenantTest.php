@@ -40,9 +40,13 @@ function tenantConDatos(string $nombre = 'Banco Uno'): array
     return compact('tenant', 'admin', 'subject', 'resultadoTags');
 }
 
+/** Exporta y consume la descarga completa: solo asi queda 'tenant_exportado' (requisito de la baja). */
 function exportarTenant(Tenant $tenant, User $super): Illuminate\Testing\TestResponse
 {
-    return test()->actingAs($super)->get("/api/superadmin/tenants/{$tenant->id}/exportar")->assertOk();
+    $respuesta = test()->actingAs($super)->get("/api/superadmin/tenants/{$tenant->id}/exportar")->assertOk();
+    $respuesta->streamedContent();
+
+    return $respuesta;
 }
 
 beforeEach(function () {
@@ -127,4 +131,42 @@ it('la baja borra todos los datos del tenant y solo deja el registro de la baja'
     tenancy()->initialize($otro);
     expect(SearchTag::count())->toBeGreaterThan(0);
     tenancy()->end();
+});
+
+// ── Correcciones del /code-review high (2026-09-28) ─────────────────────
+
+it('la exportacion del tenant solo habilita la baja cuando la descarga se entrega', function () {
+    ['tenant' => $tenant] = tenantConDatos();
+    $super = superadmin();
+
+    $respuesta = $this->actingAs($super)->get("/api/superadmin/tenants/{$tenant->id}/exportar")->assertOk();
+    $this->actingAs($super)->postJson("/api/superadmin/tenants/{$tenant->id}/baja", ['confirmacion' => 'Banco Uno'])
+        ->assertUnprocessable();
+
+    $respuesta->streamedContent();
+    $this->actingAs($super)->postJson("/api/superadmin/tenants/{$tenant->id}/baja", ['confirmacion' => 'Banco Uno'])
+        ->assertNoContent();
+});
+
+it('la baja no se salta personas al recorrer por lotes mientras borra', function () {
+    ['tenant' => $tenant] = tenantConDatos();
+    tenancy()->initialize($tenant);
+    Subject::factory()->count(2)->create();
+    tenancy()->end();
+    $super = superadmin();
+    exportarTenant($tenant, $super)->streamedContent();
+
+    $accion = app(App\Actions\ProteccionDatos\DarDeBajaTenant::class);
+    $accion->lote = 1;
+
+    expect($accion->handle($tenant, $super)['personas'])->toBe(3);
+});
+
+it('un error inesperado durante la baja no se disfraza de 422', function () {
+    ['tenant' => $tenant] = tenantConDatos();
+    $this->mock(App\Actions\ProteccionDatos\DarDeBajaTenant::class)
+        ->shouldReceive('handle')->andThrow(new RuntimeException('SQLSTATE[HY000]: Lock wait timeout'));
+
+    $this->actingAs(superadmin())->postJson("/api/superadmin/tenants/{$tenant->id}/baja", ['confirmacion' => 'Banco Uno'])
+        ->assertStatus(500);
 });

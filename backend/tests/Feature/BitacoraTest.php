@@ -220,3 +220,15 @@ it('el superadmin filtra la bitacora global por tenant', function () {
 
     expect(collect($respuesta->json('data'))->pluck('tenant.id')->unique()->all())->toBe([$uno->id]);
 });
+
+it('un registro hecho por el superadmin sobre un modelo de un tenant queda con el tenant de ese modelo', function () {
+    $respuesta = $this->actingAs(superadmin())->postJson('/api/superadmin/tenants', [
+        'name' => 'Banco Nuevo', 'admin_name' => 'Primer Admin',
+        'admin_email' => 'primer@banco-nuevo.test', 'admin_password' => 'una-clave-larga-123',
+    ])->assertCreated();
+
+    $admin = App\Models\User::where('email', 'primer@banco-nuevo.test')->sole();
+    $registro = Activity::where('subject_type', App\Models\User::class)->where('subject_id', $admin->id)->where('event', 'created')->sole();
+
+    expect($registro->tenant_id)->toBe($respuesta->json('tenant.id'));
+});

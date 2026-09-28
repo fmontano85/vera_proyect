@@ -13,6 +13,8 @@ use App\Models\ConfiguracionSanciones;
 use App\Models\SanctionList;
 use App\Services\ProteccionDatos\EstadoDocumentosLegales;
 use App\Support\ConfiguracionTenant;
+use App\Support\DescargaZip;
+use App\Support\RegistroDeAccesos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -20,7 +22,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
-use RuntimeException;
+use App\Exceptions\OperacionNoPermitida;
 use Stancl\Tenancy\Database\Models\Tenant;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -38,9 +40,11 @@ class SuperadminController extends Controller
     {
         Gate::authorize('gestionar', Tenant::class);
 
+        $tenants = Tenant::query()->orderBy('created_at')->get();
+        $alDia = $this->documentos->alDiaPorTenant($tenants->pluck('id')->map(fn ($id) => (string) $id)->all());
+
         return response()->json(
-            Tenant::query()->orderBy('created_at')->get()
-                ->map(fn (Tenant $t) => $this->serializarTenant($t))
+            $tenants->map(fn (Tenant $t) => $this->serializarTenant($t, $alDia[(string) $t->id] ?? false))
         );
     }
 
@@ -129,15 +133,15 @@ class SuperadminController extends Controller
     {
         Gate::authorize('gestionar', Tenant::class);
 
-        $ruta = $action->handle($tenant, $request->user());
+        // Un tenant grande tarda: sin esto el limite de ejecucion corta la exportacion.
+        set_time_limit(0);
 
-        return response()->streamDownload(function () use ($ruta) {
-            readfile($ruta);
-            @unlink($ruta);
-        }, 'tenant-'.substr((string) $tenant->id, 0, 8).'.zip', [
-            'Content-Type' => 'application/zip',
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return DescargaZip::responder(
+            $action->handle($tenant, $request->user()),
+            'tenant-'.substr((string) $tenant->id, 0, 8).'.zip',
+            // La baja exige este registro: solo cuenta si el cliente recibio el ZIP completo.
+            fn () => RegistroDeAccesos::registrar('tenant_exportado', 'Exportación completa del tenant', $tenant),
+        );
     }
 
     /**
@@ -159,7 +163,7 @@ class SuperadminController extends Controller
 
         try {
             $action->handle($tenant, $request->user());
-        } catch (RuntimeException $e) {
+        } catch (OperacionNoPermitida $e) {
             return response()->json(['mensaje' => $e->getMessage()], 422);
         }
 
@@ -205,14 +209,15 @@ class SuperadminController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function serializarTenant(Tenant $t): array
+    private function serializarTenant(Tenant $t, ?bool $documentosAlDia = null): array
     {
         return [
             'id' => $t->id,
             'name' => $t->name,
             'sanciones_habilitado' => (bool) $t->sanciones_habilitado,
             // Seccion 3.9, punto 1: aceptó los terminos y el contrato vigentes.
-            'documentos_al_dia' => $this->documentos->alDia($t->id),
+            // El listado lo precalcula para todos (alDiaPorTenant) en una sola consulta.
+            'documentos_al_dia' => $documentosAlDia ?? $this->documentos->alDia($t->id),
             // Seccion 3.9, puntos 2 y 3.
             'retencion_anios' => ConfiguracionTenant::retencionAnios($t),
             'depuracion_habilitada' => ConfiguracionTenant::depuracionHabilitada($t),

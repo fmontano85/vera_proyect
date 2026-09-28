@@ -11,6 +11,7 @@ use App\Models\SearchResult;
 use App\Models\Subject;
 use App\Models\SubjectAlias;
 use App\Models\User;
+use App\Services\ProteccionDatos\ResultadosDePersona;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -48,7 +49,8 @@ class BorrarSubject
         $id = $subject->id;
 
         [$conteos, $rutasEvidencia] = DB::transaction(function () use ($subject, $id) {
-            $resultadoIds = DB::table('search_results')->where('subject_id', $id)->pluck('id');
+            // Incluye resultados de busqueda por tags con captura manual atribuida a la persona.
+            $resultadoIds = ResultadosDePersona::ids($id);
             $rutasEvidencia = DB::table('search_results')->whereIn('id', $resultadoIds)
                 ->whereNotNull('evidencia_manual_path')->pluck('evidencia_manual_path')->all();
 

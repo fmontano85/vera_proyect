@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\ProteccionDatos\DarDeBajaTenant;
+use App\Actions\ProteccionDatos\ExportarTenant;
 use App\Actions\Usuarios\CrearUsuario;
 use App\Jobs\ImportSanctionListsJob;
 use App\Jobs\MatchSanctionsJob;
@@ -13,11 +15,14 @@ use App\Services\ProteccionDatos\EstadoDocumentosLegales;
 use App\Support\ConfiguracionTenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 use Stancl\Tenancy\Database\Models\Tenant;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Primer panel de superadmin (seccion 3.2 del CLAUDE.md raiz, Fase 3 -
@@ -117,6 +122,48 @@ class SuperadminController extends Controller
         }
 
         return response()->json($this->serializarTenant($tenant));
+    }
+
+    /** Seccion 3.9, punto 6: devolucion de datos al cliente antes de la baja. */
+    public function exportarTenant(Request $request, Tenant $tenant, ExportarTenant $action): StreamedResponse
+    {
+        Gate::authorize('gestionar', Tenant::class);
+
+        $ruta = $action->handle($tenant, $request->user());
+
+        return response()->streamDownload(function () use ($ruta) {
+            readfile($ruta);
+            @unlink($ruta);
+        }, 'tenant-'.substr((string) $tenant->id, 0, 8).'.zip', [
+            'Content-Type' => 'application/zip',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * Seccion 3.9, punto 6: baja definitiva. Se confirma escribiendo el
+     * nombre del tenant (o su id si no tiene nombre) y exige una
+     * exportacion reciente.
+     */
+    public function darDeBaja(Request $request, Tenant $tenant, DarDeBajaTenant $action): Response|JsonResponse
+    {
+        Gate::authorize('gestionar', Tenant::class);
+
+        $request->validate(['confirmacion' => ['required', 'string', 'max:255']]);
+        $esperado = $tenant->name ?? (string) $tenant->id;
+        abort_unless(
+            mb_strtolower(trim($request->input('confirmacion'))) === mb_strtolower(trim($esperado)),
+            422,
+            'El texto escrito no coincide con el nombre del tenant.',
+        );
+
+        try {
+            $action->handle($tenant, $request->user());
+        } catch (RuntimeException $e) {
+            return response()->json(['mensaje' => $e->getMessage()], 422);
+        }
+
+        return response()->noContent();
     }
 
     public function verConfiguracionSanciones(): JsonResponse

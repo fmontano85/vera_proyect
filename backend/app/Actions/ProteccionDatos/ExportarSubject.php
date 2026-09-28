@@ -28,6 +28,26 @@ class ExportarSubject
 
     public function handle(Subject $subject, User $por): string
     {
+        $ruta = tempnam(sys_get_temp_dir(), 'vera-export-');
+        $zip = new ZipArchive;
+
+        if ($zip->open($ruta, ZipArchive::OVERWRITE) !== true) {
+            throw new RuntimeException('No se pudo crear el archivo de exportación.');
+        }
+
+        $this->agregarAlZip($zip, $subject, $por, '');
+        $zip->close();
+
+        return $ruta;
+    }
+
+    /**
+     * Agrega persona.json y la evidencia manual de una persona bajo un
+     * prefijo (vacio para la exportacion individual; 'personas/{id}/' en
+     * la exportacion completa del tenant - ExportarTenant).
+     */
+    public function agregarAlZip(ZipArchive $zip, Subject $subject, User $por, string $prefijo): void
+    {
         $subject->load('aliases');
 
         $resultados = SearchResult::query()->where('subject_id', $subject->id)->with('article')->orderBy('id')->get();
@@ -76,30 +96,23 @@ class ExportarSubject
             'historial' => collect($this->historial->handle($subject, 10_000)->items())->all(),
         ];
 
-        return $this->empaquetar($datos, $resultados);
+        $zip->addFromString("{$prefijo}persona.json", self::json($datos));
+        self::agregarEvidencias($zip, $resultados, $prefijo);
+    }
+
+    public static function json(mixed $datos): string
+    {
+        return json_encode($datos, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     /** @param  iterable<SearchResult>  $resultados */
-    private function empaquetar(array $datos, iterable $resultados): string
+    public static function agregarEvidencias(ZipArchive $zip, iterable $resultados, string $prefijo): void
     {
-        $ruta = tempnam(sys_get_temp_dir(), 'vera-export-');
-        $zip = new ZipArchive;
-
-        if ($zip->open($ruta, ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException('No se pudo crear el archivo de exportación.');
-        }
-
-        $zip->addFromString('persona.json', json_encode($datos, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
         $disco = Storage::disk(config('vera.evidencia_manual_disk'));
         foreach ($resultados as $r) {
             if ($r->evidencia_manual_path && $disco->exists($r->evidencia_manual_path)) {
-                $zip->addFromString("evidencia-manual/resultado-{$r->id}.pdf", $disco->get($r->evidencia_manual_path));
+                $zip->addFromString("{$prefijo}evidencia-manual/resultado-{$r->id}.pdf", $disco->get($r->evidencia_manual_path));
             }
         }
-
-        $zip->close();
-
-        return $ruta;
     }
 }

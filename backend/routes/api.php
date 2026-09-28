@@ -43,6 +43,9 @@ Route::middleware(['auth:sanctum', 'activo'])->prefix('superadmin')->group(funct
     Route::get('tenants', [SuperadminController::class, 'tenants']);
     Route::post('tenants', [SuperadminController::class, 'crearTenant']);
     Route::patch('tenants/{tenant}', [SuperadminController::class, 'actualizarTenant']);
+    // Seccion 3.9, punto 6: exportacion completa y baja definitiva.
+    Route::get('tenants/{tenant}/exportar', [SuperadminController::class, 'exportarTenant']);
+    Route::post('tenants/{tenant}/baja', [SuperadminController::class, 'darDeBaja']);
     Route::get('configuracion-sanciones', [SuperadminController::class, 'verConfiguracionSanciones']);
     Route::put('configuracion-sanciones', [SuperadminController::class, 'actualizarConfiguracionSanciones']);
     Route::post('sanciones/actualizar-lista', [SuperadminController::class, 'actualizarListaSanciones']);

@@ -3,6 +3,8 @@ export interface TenantSuperadmin {
   id: string;
   name: string | null;
   sanciones_habilitado: boolean;
+  /** Acepto los terminos y el contrato vigentes (seccion 3.9, punto 1). */
+  documentos_al_dia: boolean;
 }
 
 /** POST /api/superadmin/tenants. */

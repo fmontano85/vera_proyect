@@ -121,6 +121,9 @@ function TenantFila({ tenant, onAlternarSanciones }: { tenant: TenantSuperadmin;
         <p className="text-muted-foreground truncate font-mono text-xs">{tenant.id}</p>
       </div>
       <div className="flex shrink-0 items-center gap-3">
+        <Badge variant={tenant.documentos_al_dia ? 'outline' : 'destructive'}>
+          {tenant.documentos_al_dia ? 'Términos aceptados' : 'Términos sin aceptar'}
+        </Badge>
         <Badge variant={tenant.sanciones_habilitado ? 'default' : 'outline'}>
           Sanciones {tenant.sanciones_habilitado ? 'habilitada' : 'deshabilitada'}
         </Badge>

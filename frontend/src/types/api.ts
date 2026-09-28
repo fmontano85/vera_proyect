@@ -12,6 +12,9 @@ export interface User {
    * activa el superadmin por tenant. false/sin sentido para superadmin
    * (no tiene tenant). */
   sanciones_habilitado: boolean;
+  /** Seccion 3.9, punto 1: hay terminos o contrato vigentes sin aceptar -
+   * el backend bloquea crear personas y buscar hasta que el admin acepte. */
+  terminos_pendientes: boolean;
 }
 
 export type NivelRiesgo = 'bajo' | 'medio' | 'alto';

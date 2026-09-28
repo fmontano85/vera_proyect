@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { Building2, LogOut, ScrollText, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Building2, FileText, LogOut, ScrollText, ShieldAlert, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -15,6 +15,7 @@ import { useCurrentUser, useLogout } from '@/features/auth/useAuth';
 const NAV = [
   { to: '/superadmin', label: 'Tenants', icon: Building2, titulo: 'Tenants' },
   { to: '/superadmin/sanciones', label: 'Listas de sanciones', icon: ShieldAlert, titulo: 'Listas de sanciones' },
+  { to: '/superadmin/documentos', label: 'Términos y contratos', icon: FileText, titulo: 'Términos y contratos' },
   { to: '/superadmin/bitacora', label: 'Bitácora', icon: ScrollText, titulo: 'Bitácora de la plataforma' },
 ] as const;
 

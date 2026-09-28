@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CalendarClock, House, Inbox, ListChecks, LogOut, ScrollText, Search, Settings, ShieldAlert, ShieldCheck, Tags, UserCog, Users } from 'lucide-react';
+import { CalendarClock, FileText, House, Inbox, ListChecks, LogOut, ScrollText, Search, Settings, ShieldAlert, ShieldCheck, Tags, TriangleAlert, UserCog, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
   DropdownMenu,
@@ -105,6 +105,10 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
                   <UserCog />
                   Mi cuenta
                 </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate({ to: '/documentos' })}>
+                  <FileText />
+                  Términos y contrato
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   variant="destructive"
                   onSelect={() => logout.mutate(undefined, { onSuccess: () => navigate({ to: '/login' }) })}
@@ -116,6 +120,21 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
             </DropdownMenu>
           )}
         </header>
+
+        {/* Seccion 3.9, punto 1: el backend bloquea crear/buscar hasta que el admin acepte. */}
+        {user?.terminos_pendientes && (
+          <div className="border-warning/50 bg-warning/10 flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm">
+            <span className="flex items-center gap-2">
+              <TriangleAlert className="text-warning size-4 shrink-0" />
+              {esAdmin(user)
+                ? 'Hay términos o un contrato nuevos por aceptar. Mientras no los aceptes, nadie de tu organización puede cargar personas ni hacer búsquedas.'
+                : 'El administrador de tu organización debe aceptar los términos vigentes. Mientras tanto no se pueden cargar personas ni hacer búsquedas.'}
+            </span>
+            <Link to="/documentos" className="text-primary font-medium underline-offset-4 hover:underline">
+              {esAdmin(user) ? 'Revisar y aceptar' : 'Ver documentos'}
+            </Link>
+          </div>
+        )}
 
         <main className="flex-1 p-4 md:p-6">{children}</main>
 

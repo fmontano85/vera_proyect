@@ -1,5 +1,5 @@
 import type { QueryKey } from '@tanstack/react-query';
-import { Download, ExternalLink, Loader2 } from 'lucide-react';
+import { Download, ExternalLink, FileText, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { EstadoMatchBadge } from '@/components/EstadoMatchBadge';
@@ -47,7 +47,7 @@ export function ResultadoCard({
     });
   }
 
-  function handleDescargar(tipo: 'snapshot' | 'manual') {
+  function handleDescargar(tipo: 'snapshot' | 'manual' | 'pdf') {
     api
       .download(`/api/resultados/${resultado.id}/evidencia/${tipo}`)
       .catch((error) =>
@@ -137,15 +137,22 @@ export function ResultadoCard({
         {(tieneSnapshot || tienePdfManual) && (
           <div className="flex flex-wrap items-center gap-2">
             {tieneSnapshot && (
-              <Button size="sm" variant="outline" onClick={() => handleDescargar('snapshot')}>
-                <Download className="size-3.5" />
-                Descargar snapshot
-              </Button>
+              <>
+                {/* Seccion 3.6: PDF desde la evidencia guardada, con portada de URL, captura y hash. */}
+                <Button size="sm" variant="outline" onClick={() => handleDescargar('pdf')}>
+                  <FileText className="size-3.5" />
+                  Descargar PDF
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => handleDescargar('snapshot')}>
+                  <Download className="size-3.5" />
+                  Snapshot original
+                </Button>
+              </>
             )}
             {tienePdfManual && (
               <Button size="sm" variant="outline" onClick={() => handleDescargar('manual')}>
                 <Download className="size-3.5" />
-                Descargar PDF de evidencia
+                Descargar PDF capturado a mano
               </Button>
             )}
             {resultado.article?.hash_contenido && (

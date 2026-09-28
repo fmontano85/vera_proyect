@@ -3,7 +3,7 @@
 > Plataforma SaaS multi-tenant de *adverse media screening* y debida diligencia para sujetos obligados bajo la Ley Contra el Lavado de Dinero y de Activos (El Salvador), con expansión prevista a Guatemala, Honduras y Costa Rica.
 > Arquitectura multi-tenant de base de datos única (`tenant_id` + global scope), API REST en Laravel, frontend SPA en React, todo en Docker Compose (backend) + Node.js en el host (frontend).
 
-> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **282 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Primera pantalla de un panel de superadmin (`/superadmin`). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
+> **Estado del proyecto (2026-09-28):** Fase 1 (MVP) y Fase 2 (agenda de seguimiento de la lista de vigilancia) completas e implementadas — backend y frontend, verificadas con datos reales contra MariaDB y con Playwright (Node, no el `webapp-testing` de Python — sin `pip` en esta máquina). **290 tests de backend pasan.** Interfaz completa salvo navegación en móvil (aplazada): evidencia descargable, historial de auditoría, catálogo de tags, usuarios del tenant, cuenta propia, sanciones OFAC (deshabilitada por defecto, la habilita el superadmin por tenant — sección 7.1) y atribución a Brave. Primera pantalla de un panel de superadmin (`/superadmin`). Pendientes principales: navegación en móvil, calibrar el umbral de sanciones, despliegue real a producción (nunca se ha desplegado fuera de desarrollo) y SMTP real. Detalle completo en el `CLAUDE.md` de la raíz del repositorio, secciones "Estatus de sesión" y "Pendiente / próximo paso".
 
 ---
 
@@ -198,7 +198,7 @@ Verificar que levantó todo:
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}"
 curl -i http://localhost:8000/api/user   # debe responder 401 (Sanctum activo, sin sesion)
-docker exec vera_api php artisan test    # deben pasar 282 tests
+docker exec vera_api php artisan test    # deben pasar 290 tests
 ```
 
 API en `http://localhost:8000`, Meilisearch en `:7700`, MariaDB en `:3306`, Redis en `:6379` (contenedor propio solo en dev, vía `docker-compose.override.yml`).
@@ -399,7 +399,7 @@ docker exec vera_api php artisan migrate:status
 
 ## 7. Gestión de tenants
 
-Todavía no existe un panel de superadmin (Fase 3) ni un endpoint de alta de tenants. Dos caminos:
+**Desde el panel de superadmin (sección 7.1), recomendado en producción:** `/superadmin` crea el tenant junto con su primer usuario admin en un solo paso. Para probar rápido en dev, o para casos que el panel no cubre todavía (más usuarios, tokens sin frontend), quedan estos dos caminos:
 
 ### Por comando (recomendado para probar rápido)
 
@@ -487,17 +487,19 @@ cd frontend   # el package.json vive ahi, no en la raiz del repo
 npm run dev
 ```
 
-### 7.1 Panel de superadmin (`/superadmin`, implementado 2026-09-28)
+### 7.1 Panel de superadmin (`/superadmin`, implementado 2026-09-28, completado 2026-09-28)
 
-Primera pantalla real de un panel de superadmin (el resto — alta de tenants, planes, facturación — sigue en Fase 3). Fuera de las rutas de tenant (`auth:sanctum` + `activo`, sin el middleware `tenant`): el usuario `superadmin` no tiene `tenant_id` y ninguna pantalla de `/subjects`, `/coincidencias`, etc. le sirve — al iniciar sesión se le redirige directo a `/superadmin`, y si visita cualquier otra pantalla se le redirige de vuelta ahí.
+Primera pantalla real de un panel de superadmin (planes/facturación siguen en Fase 3). Fuera de las rutas de tenant (`auth:sanctum` + `activo`, sin el middleware `tenant`): el usuario `superadmin` no tiene `tenant_id` y ninguna pantalla de `/subjects`, `/coincidencias`, etc. le sirve — al iniciar sesión se le redirige directo a `/superadmin`, y si visita cualquier otra pantalla se le redirige de vuelta ahí.
 
-**Qué gestiona hoy, ambos con auditoría en `activity_log`:**
+**Qué gestiona hoy, todo con auditoría en `activity_log`:**
+- **Alta de tenants:** el panel crea el tenant junto con su primer usuario (rol `admin`, contraseña inicial) en una sola operación — un tenant sin ningún usuario es inútil (nadie puede entrar a él, y `POST /api/usuarios` exige ya estar autenticado *dentro* de un tenant, no hay forma circular de resolverlo después). El superadmin entrega la contraseña inicial al cliente por un medio seguro.
+- **Renombrar un tenant** (`tenants.name`, nullable — ningún tenant tenía nombre hasta esta sección): editable inline en el panel.
 - **Sanciones (cruce contra OFAC SDN) por tenant** — `sanciones_habilitado` en `tenants`, **`false` por defecto en todo tenant nuevo**. Sin esto habilitado, el tenant no ve el ítem "Sanciones" en el menú, el contador de Inicio, ni las 3 rutas de `SancionController` (responden 404, no 403, para no confirmar que la función existe). `MatchSanctionsJob` salta los tenants sin la función habilitada.
 - **Modo de descarga de la lista OFAC** (`configuracion_sanciones`, fila única global — la lista es un catálogo compartido por todos los tenants, no tiene sentido un modo distinto por cada uno): `automatico` (default, corre el domingo 02:00) o `manual`. En modo manual, el botón "Actualizar lista ahora" del panel es la única forma de refrescarla — dispara el mismo `Bus::chain([ImportSanctionListsJob, MatchSanctionsJob])` de la sección 10 sin esperar al domingo.
 
-**Endpoints:** `GET /api/superadmin/tenants`, `PATCH /api/superadmin/tenants/{tenant}`, `GET/PUT /api/superadmin/configuracion-sanciones`, `POST /api/superadmin/sanciones/actualizar-lista`. Autorización via `TenantPolicy::gestionar` (registrada a mano en `AppServiceProvider::boot()` — `Tenant` es un modelo de `stancl/tenancy`, el autodescubrimiento de policies de Laravel no lo encuentra solo).
+**Endpoints:** `GET/POST /api/superadmin/tenants`, `PATCH /api/superadmin/tenants/{tenant}` (acepta `name` y/o `sanciones_habilitado`, al menos uno), `GET/PUT /api/superadmin/configuracion-sanciones`, `POST /api/superadmin/sanciones/actualizar-lista`. Autorización via `TenantPolicy::gestionar` (registrada a mano en `AppServiceProvider::boot()` — `Tenant` es un modelo de `stancl/tenancy`, el autodescubrimiento de policies de Laravel no lo encuentra solo). El alta reutiliza `App\Actions\Usuarios\CrearUsuario`, la misma Action que usa `UsuarioController::store`.
 
-> **IMPORTANTE:** los tenants no tienen nombre por defecto (`tenants.name`, columna nueva, nullable). El panel los muestra como "Sin nombre" hasta que se les asigne uno — hoy no hay UI para eso, solo por tinker: `\Stancl\Tenancy\Database\Models\Tenant::find($id)->update(['name' => 'Empresa X'])`.
+Verificado con datos reales contra MariaDB: alta de un tenant con su admin, el admin nuevo pudo iniciar sesión de inmediato, renombrado del tenant — todo limpiado después de la prueba.
 
 ---
 
@@ -733,7 +735,7 @@ npm run lint        # oxlint
 
 ## 15. Feature Tests
 
-El proyecto usa Pest. **282 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
+El proyecto usa Pest. **290 tests pasan** (verificado 2026-09-28). Cobertura obligatoria: aislamiento de tenant, matching, extracción con respuestas de IA grabadas (fixtures, no llamadas reales en tests).
 
 ```bash
 docker exec vera_api php artisan test              # suite completa
